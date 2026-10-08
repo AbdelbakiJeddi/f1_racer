@@ -1,0 +1,93 @@
+# Python bytecode and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.Python
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing & Linting
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Deep Learning / RL Model Weights & Checkpoints
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+
+# Experiment Tracking & Training Logs
+runs/
+logs/
+wandb/
+*.tfevents.*
+
+# Test outputs and transient renders
+outputs/
+
+# NVIDIA / Omniverse / Isaac Sim Runtime & Cache
+*.log
+.cache/
+.nv/
+ShaderCache/
+*/ShaderCache/*
+carb_temp/
+omni.cache/
+Fabric/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Rendered captures and images
+*.png
+*.jpg
+*.jpeg
+
+# USD files, scenes, and track data
+*.usd
+*.usda
+*.usdc
+*.usdz
+isaacsim/scenes/
+*.npz
