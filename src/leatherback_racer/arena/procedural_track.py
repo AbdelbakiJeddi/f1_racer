@@ -7,7 +7,8 @@ from pxr import Usd, UsdGeom, UsdShade, UsdLux, Gf, Sdf
 
 @dataclasses.dataclass
 class TrackConfig:
-    track_type: str = "wavy_circle"  # "wavy_circle", "s_curve", "circuit", "slalom", "random"
+    track_type: str = "wavy_circle"  # "wavy_circle", "s_curve", "circuit", "slalom", "random", "organic"
+    num_corners: Optional[int] = None # Control points / corners count for circuit mode
     radius: float = 10.0             # Mean radius for wavy circle / circuit (m)
     waves: int = 4                   # Number of harmonic waves for wavy circle
     amplitude: float = 1.8           # Amplitude of waves (m)
@@ -116,7 +117,10 @@ class ProceduralTrack:
     def _generate_circuit(self):
         """Generates an authentic asymmetric motorsport racetrack with variable straights, hairpins, and chicanes."""
         self.is_closed = True
-        num_ctrl = self.rng.integers(10, 16)
+        if self.cfg.num_corners is not None:
+            num_ctrl = max(6, self.cfg.num_corners)
+        else:
+            num_ctrl = self.rng.integers(10, 16)
         base_angles = np.linspace(0, 2 * math.pi, num_ctrl, endpoint=False)
         angle_jitter = self.rng.uniform(-0.35, 0.35, size=num_ctrl) * (2 * math.pi / num_ctrl)
         angles = np.sort(base_angles + angle_jitter)
