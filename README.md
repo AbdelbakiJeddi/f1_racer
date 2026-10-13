@@ -35,7 +35,21 @@ Spawns the Leatherback robot between boundary lines and captures the onboard cam
 /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/view_leatherback_camera.py --headless
 ```
 
-### 3. Verify the CNN Perception & Policy
+### 3. Verify Isaac Lab Pipeline & Articulation
+Verifies the USD track, official Leatherback suspension and multi-link articulation, state observations, and camera sensor output:
+
+```bash
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/verify_pipeline.py --headless
+```
+
+### 4. Play Random Agent in Environment
+Runs interactive multi-environment stepping with the random policy:
+
+```bash
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/play_random_agent.py --num_envs 2 --steps 60 --headless
+```
+
+### 5. Verify the CNN Perception & Policy
 Runs GPU tensor verification, frame stacking, and inference speed benchmarking:
 
 ```bash
@@ -48,10 +62,23 @@ Runs GPU tensor verification, frame stacking, and inference speed benchmarking:
 
 ```text
 f1_racer/
+├── f1_racer_rl/                    # Isaac Lab Extension package
+│   ├── config/extension.toml       # Omniverse extension definition
+│   ├── pyproject.toml              # Extension installation metadata
+│   ├── src/f1_racer_rl/
+│   │   ├── assets/                 # Official Leatherback robot & track assets
+│   │   │   ├── data/               # USD assets (leatherback.usd, track.usd, track_data.npz)
+│   │   │   └── leatherback.py      # Articulation & suspension actuator configuration
+│   │   └── tasks/f1_racer/         # Task MDP formulation
+│   │       ├── config/f1_car/      # Environment & RSL-RL PPO agent configs
+│   │       └── mdp/                # Actions, observations, rewards, terminations, track oracle
+│   └── tests/                      # Gym registration and environment tests
 ├── scripts/
 │   ├── generate_wavy_track.py      # Procedural track generator & scene builder
 │   ├── view_leatherback_camera.py  # Robot USD staging & camera test
-│   └── test_cnn_perception.py      # Perception & policy verification benchmark
+│   ├── test_cnn_perception.py      # Perception & policy verification benchmark
+│   ├── verify_pipeline.py          # Isaac Lab pipeline & official articulation test
+│   └── play_random_agent.py        # Multi-environment random agent stepping
 ├── src/leatherback_racer/
 │   ├── arena/
 │   │   └── procedural_track.py     # Ribbon mesh math & USD stage generation
@@ -71,3 +98,4 @@ f1_racer/
 
 - **[CNN_Archi.md](CNN_Archi.md):** Complete visual architecture guide, layer-by-layer convolution walkthroughs, and spatial keypoint explanations.
 - **[PLAN.md](PLAN.md):** Full reinforcement learning problem formulation, reward functions, and asymmetric training plan.
+

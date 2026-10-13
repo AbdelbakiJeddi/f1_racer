@@ -91,3 +91,9 @@ Thumbs.db
 *.usdz
 isaacsim/scenes/
 *.npz
+
+# Allow essential project-owned asset data for f1_racer_rl
+!f1_racer_rl/src/f1_racer_rl/assets/data/*.usd
+!f1_racer_rl/src/f1_racer_rl/assets/data/**/*.usd
+!f1_racer_rl/src/f1_racer_rl/assets/data/*.npz
+
