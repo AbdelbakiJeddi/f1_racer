@@ -64,6 +64,7 @@ wandb/
 
 # Test outputs and transient renders
 outputs/
+videos/
 
 # NVIDIA / Omniverse / Isaac Sim Runtime & Cache
 *.log
