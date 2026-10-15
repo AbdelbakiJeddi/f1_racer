@@ -16,7 +16,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.physics import PhysxAutoCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import CameraCfg
+from isaaclab.sensors import CameraCfg, TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab_ov.physics import OvPhysxCfg
 from isaaclab_physx.physics import PhysxCfg
@@ -71,6 +71,23 @@ class F1RacerSceneCfg(InteractiveSceneCfg):
     # Leatherback racing car articulation
     robot: ArticulationCfg = LEATHERBACK_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
+    # Forward-facing onboard camera mounted on the chassis nose looking along the track
+    camera: TiledCameraCfg = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/Rigid_Bodies/Chassis/front_camera",
+        offset=TiledCameraCfg.OffsetCfg(
+            pos=(35.0, 0.0, 15.0),
+            rot=(0.0, 0.130526, 0.0, 0.991445),
+            convention="world",
+        ),
+        spawn=sim_utils.PinholeCameraCfg(focal_length=12.0, horizontal_aperture=20.955),
+        data_types=["rgb"],
+        width=128,
+        height=128,
+        update_period=0.0,
+    )
+
+
+
     # Lighting: balanced dome ambient + distant sunlight
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
@@ -111,14 +128,15 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy (Actor: state vector containing dynamics and track errors)."""
+        """Observations for policy (Actor: vision-extracted track errors + vehicle dynamics)."""
 
-        state = ObsTerm(
-            func=mdp.privileged_track_state,
+        vision_state = ObsTerm(
+            func=mdp.vision_track_state,
             params={
+                "sensor_cfg": SceneEntityCfg("camera"),
                 "asset_cfg": SceneEntityCfg(
                     "robot", joint_names=["Knuckle__Upright__Front_.*"]
-                )
+                ),
             },
         )
 
@@ -237,7 +255,7 @@ class F1RacerEnvCfg(ManagerBasedRLEnvCfg):
     sim: sim_utils.SimulationCfg = sim_utils.SimulationCfg(
         dt=1.0 / 120.0,
         render_interval=4,
-        physics=F1RacerPhysicsCfg(),
+        physics=PhysxCfg(),
     )
 
     # Scene settings (isolated parallel environments)

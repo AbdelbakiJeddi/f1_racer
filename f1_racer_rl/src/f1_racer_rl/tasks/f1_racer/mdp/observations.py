@@ -83,3 +83,52 @@ def privileged_track_state(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) ->
     norm_lat_err = lat_err / half_width
 
     return torch.cat([lat_err, head_err, vx, vy, wz, steer, v_tangent, norm_lat_err], dim=-1)
+
+
+_detector_cache: dict[str, BatchedVisionTrackDetector] = {}
+
+
+def get_vision_detector(device: str, img_h: int = 128, img_w: int = 128) -> BatchedVisionTrackDetector:
+    """Returns a cached GPU instance of BatchedVisionTrackDetector."""
+    key = f"{device}_{img_h}_{img_w}"
+    if key not in _detector_cache:
+        from leatherback_racer.vision.track_detector import BatchedVisionTrackDetector
+        _detector_cache[key] = BatchedVisionTrackDetector(img_h=img_h, img_w=img_w).to(device)
+    return _detector_cache[key]
+
+
+def vision_track_state(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Computes vision-derived track errors and combines with vehicle kinematics.
+
+    Returns:
+        Tensor of shape (N, 7):
+        - e_lat: normalized lateral displacement [-1, 1]
+        - e_heading: heading angular error in radians
+        - confidence: line detection confidence [0, 1]
+        - vx: longitudinal velocity in body frame
+        - vy: lateral velocity in body frame
+        - wz: yaw rate in body frame
+        - steer: knuckle joint position
+    """
+    sensor = env.scene[sensor_cfg.name]
+    rgb_images = sensor.data.output["rgb"]
+
+    # Support H, W from image shape
+    img_h = rgb_images.shape[1] if rgb_images.dim() == 4 and rgb_images.shape[-1] in (3, 4) else rgb_images.shape[2]
+    img_w = rgb_images.shape[2] if rgb_images.dim() == 4 and rgb_images.shape[-1] in (3, 4) else rgb_images.shape[3]
+
+    detector = get_vision_detector(device=str(rgb_images.device), img_h=img_h, img_w=img_w)
+    features, _ = detector(rgb_images)  # (N, 3): [e_lat, e_heading, confidence]
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    vx = asset.data.root_lin_vel_b.torch[:, 0:1]
+    vy = asset.data.root_lin_vel_b.torch[:, 1:2]
+    wz = asset.data.root_ang_vel_b.torch[:, 2:3]
+    steer = torch.mean(asset.data.joint_pos.torch[:, asset_cfg.joint_ids], dim=-1, keepdim=True)
+
+    return torch.cat([features, vx, vy, wz, steer], dim=-1)
+

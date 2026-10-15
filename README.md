@@ -52,7 +52,18 @@ Generates standalone racing circuits and exports geometry data (`.npz`) and USD 
 /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/generate_wavy_track.py
 ```
 
-### 5. View Robot in Simulation
+### 5. Test Computer Vision Pipeline
+Run GPU-accelerated classical computer vision tests on synthetic track views or live simulation:
+
+```bash
+# Standalone PyTorch GPU vision test (unit test across 4 driving scenarios)
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_vision_pipeline.py
+
+# Live Isaac Lab simulation test with multi-panel diagnostic dashboard
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_vision_pipeline_live.py --headless
+```
+
+### 6. View Robot in Simulation
 Spawns the Leatherback robot between boundary lines and captures the onboard camera view:
 
 ```bash
@@ -77,20 +88,17 @@ f1_racer/
 │   │       └── mdp/                # Actions, observations, rewards, terminations, track oracle
 │   └── tests/                      # Gym registration and environment tests
 ├── scripts/
+│   ├── test_vision_pipeline.py     # Fast GPU classical computer vision unit tests
+│   ├── test_vision_pipeline_live.py# Live Isaac Lab simulation CV test & diagnostic dashboard
 │   ├── verify_pipeline.py          # Isaac Lab pipeline & official articulation test
 │   ├── play_random_agent.py        # Multi-environment random agent stepping
 │   ├── generate_wavy_track.py      # Procedural track generator & scene builder
-│   ├── view_leatherback_camera.py  # Robot USD staging & camera test
-│   └── test_cnn_perception.py      # Perception & policy verification benchmark
+│   └── view_leatherback_camera.py  # Robot USD staging & camera test
 ├── src/leatherback_racer/
 │   ├── arena/
 │   │   └── procedural_track.py     # Ribbon mesh math & USD stage generation
-│   ├── vision/
-│   │   ├── transforms.py           # ROI crop, resize, contrast filter
-│   │   └── frame_stack.py          # Temporal buffer for frame sequences
-│   └── models/
-│       ├── cnn_encoders.py         # Visual backbones & feature extractors
-│       └── policy.py               # Actor-Critic network definitions
+│   └── vision/
+│       └── track_detector.py       # Batched GPU classical CV track boundary detector
 └── PLAN.md                         # Detailed RL formulation & training roadmap
 ```
 

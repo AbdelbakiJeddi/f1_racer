@@ -275,7 +275,7 @@ def capture_camera_with_replicator(cam_prim_path, out_file, label, resolution=(6
 
 top_down_png = os.path.join(arena_dir, f"{base_name}_top_down.png")
 capture_camera_with_replicator(top_cam_path, top_down_png, "Top-Down Path Overview", resolution=(1024, 1024))
-capture_camera_with_replicator(front_cam_path, os.path.join(arena_dir, "wavy_onboard_view.png"), "Onboard Camera View (CNN Input)")
+capture_camera_with_replicator(front_cam_path, os.path.join(arena_dir, "wavy_onboard_view.png"), "Onboard Camera View")
 capture_camera_with_replicator(chase_cam_path, os.path.join(arena_dir, "wavy_chase_view.png"), "Chase Overview Camera View")
 
 # 10. Interactive GUI loop if non-headless

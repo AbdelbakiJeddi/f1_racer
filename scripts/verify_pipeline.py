@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(description="Verify F1 Racer pipeline with Rand
 parser.add_argument("--num_envs", type=int, default=2, help="Number of parallel environments.")
 parser.add_argument("--steps", type=int, default=30, help="Number of random agent interaction steps.")
 parser.add_argument("--headless", action="store_true", default=True, help="Run headless.")
-parser.add_argument("--save_image", type=str, default="camera_output_verify.png", help="Path to save verified camera image.")
+parser.add_argument("--save_image", type=str, default="outputs/camera_frame_verified.png", help="Path to save verified camera image.")
 args = parser.parse_args()
 
 # 1. Launch Isaac Lab App
@@ -55,16 +55,14 @@ def main():
     print(f"  Robot joint names ({len(robot.joint_names)} joints): {robot.joint_names}")
     print("  PASS: Robot USD loaded successfully into simulation.")
 
-    # Check Observations (No Camera in policy/critic)
-    print("\n[3] Verifying Observations (State-based only, no camera in policy)...")
-    for group_name in ["policy", "critic"]:
-        if group_name in obs:
-            val = obs[group_name]
-            print(f"  Obs group '{group_name}' shape: {tuple(val.shape)} (dtype: {val.dtype})")
-            assert val.ndim == 2, f"Expected 2D state vector, got {val.ndim}D!"
-            assert val.shape[-1] == 8, f"Expected 8D state vector, got {val.shape[-1]}D!"
+    # Check Observations (Vision-derived policy obs, privileged critic)
+    print("\n[3] Verifying Observations (7D Vision Policy, 8D Privileged Critic)...")
+    assert "policy" in obs and obs["policy"].shape[-1] == 7, f"Expected 7D policy obs, got {obs.get('policy', None)}"
+    assert "critic" in obs and obs["critic"].shape[-1] == 8, f"Expected 8D critic obs, got {obs.get('critic', None)}"
+    print(f"  Policy vision state shape: {tuple(obs['policy'].shape)}: [e_lat, e_head, conf, vx, vy, wz, steer]")
+    print(f"  Critic privileged state shape: {tuple(obs['critic'].shape)}: [lat_err, head_err, vx, vy, wz, steer, v_tan, norm_lat]")
     print(f"  Policy state sample: {obs['policy'][0].cpu().numpy().round(4)}")
-    print("  PASS: Policy observation is pure 8D state vector (zero camera overhead in RL state).")
+    print("  PASS: Policy observation is 7D vision-kinematics state vector; Critic is 8D privileged state.")
 
     # Step Random Agent
     print(f"\n[4] Running Random Agent for {args.steps} interaction steps...")

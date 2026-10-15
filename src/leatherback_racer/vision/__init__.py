@@ -1,4 +1,5 @@
-from .transforms import VisionPreprocessor, VisualDomainRandomizer
-from .frame_stack import BatchedFrameStack
+from .track_detector import BatchedVisionTrackDetector
 
-__all__ = ["VisionPreprocessor", "VisualDomainRandomizer", "BatchedFrameStack"]
+__all__ = [
+    "BatchedVisionTrackDetector",
+]
