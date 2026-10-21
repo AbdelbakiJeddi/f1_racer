@@ -139,7 +139,7 @@ class ObservationsCfg:
         """Observations for policy (Actor: vision-extracted track errors + vehicle dynamics)."""
 
         vision_state = ObsTerm(
-            func=mdp.vision_track_state,
+            func=mdp.CarObservations.vision_track_state,
             params={
                 "sensor_cfg": SceneEntityCfg("camera"),
                 "asset_cfg": SceneEntityCfg(
@@ -157,7 +157,7 @@ class ObservationsCfg:
         """Observations for critic."""
 
         privileged_state = ObsTerm(
-            func=mdp.privileged_track_state,
+            func=mdp.CarObservations.privileged_track_state,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot", joint_names=["Knuckle__Upright__Front_.*"]
@@ -179,7 +179,7 @@ class EventCfg:
 
     # Reset car root pose onto the track centerline
     reset_pose = EventTerm(
-        func=mdp.reset_car_pose_on_track,
+        func=mdp.CarEvents.reset_pose_on_track,
         mode="reset",
         params={
             "random_start_point": False,
@@ -206,24 +206,24 @@ class RewardsCfg:
     """Reward terms for path centering and forward racing."""
 
     # (1) Primary task: Gaussian reward for remaining centered between boundary lines
-    centering = RewTerm(func=mdp.track_centering, weight=1.5, params={"std": 0.25})
+    centering = RewTerm(func=mdp.CarRewards.centering, weight=1.5, params={"std": 0.25})
 
     # (2) Progress: forward velocity along track tangent
-    progress = RewTerm(func=mdp.track_forward_progress, weight=1.0)
+    progress = RewTerm(func=mdp.CarRewards.forward_progress, weight=1.0)
 
     # (3) Heading: alignment of car with track tangent direction
-    heading = RewTerm(func=mdp.track_heading_alignment, weight=0.5)
+    heading = RewTerm(func=mdp.CarRewards.heading_alignment, weight=0.5)
 
     # (4) Penalty for straying close to or outside the boundary ribbons
     boundary = RewTerm(
-        func=mdp.boundary_violation_penalty,
+        func=mdp.CarRewards.boundary_penalty,
         weight=-2.0,
         params={"margin_threshold": 0.45},
     )
 
     # (5) Action smoothness: penalize physical knuckle angular velocity (wheel shaking)
     steering_smoothness = RewTerm(
-        func=mdp.steering_smoothness_penalty,
+        func=mdp.CarRewards.steering_smoothness,
         weight=-0.15,
         params={
             "asset_cfg": SceneEntityCfg(
@@ -234,7 +234,7 @@ class RewardsCfg:
 
     # (6) Action rate: penalize rapid back-and-forth steering action jitter
     steering_rate = RewTerm(
-        func=mdp.steering_rate_penalty,
+        func=mdp.CarRewards.steering_rate,
         weight=-0.25,
     )
 
@@ -250,10 +250,11 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
     # (2) Boundary crash / off-track termination
-    off_track = DoneTerm(func=mdp.off_track, params={"max_lateral_distance": 0.75})
+    off_track = DoneTerm(func=mdp.CarTerminations.off_track, params={"max_lateral_distance": 0.75})
 
     # (3) Vehicle rollover or flip
-    rollover = DoneTerm(func=mdp.vehicle_rollover, params={"max_tilt_rad": 0.785})
+    rollover = DoneTerm(func=mdp.CarTerminations.rollover, params={"max_tilt_rad": 0.785})
+
 
 
 ##

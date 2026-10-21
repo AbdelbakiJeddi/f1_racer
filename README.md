@@ -1,6 +1,6 @@
 # F1 Racer: Leatherback Autonomous Racing in Isaac Lab
 
-Autonomous trajectory tracking and high-speed racing for the **NVIDIA Leatherback** robot in **Isaac Sim / Isaac Lab**.
+Autonomous trajectory tracking and high-speed racing for the **NVIDIA Leatherback** robot in **Isaac Sim / Isaac Lab 3.0**.
 
 ---
 
@@ -8,102 +8,115 @@ Autonomous trajectory tracking and high-speed racing for the **NVIDIA Leatherbac
 
 - **Official Leatherback Dynamics:** 26-joint multi-link articulation featuring double-wishbone suspension linkages, tuned shock absorbers, front steering knuckles, and 4-wheel drive.
 - **Isaac Lab Extension (`f1_racer_rl`):** Modular, manager-based reinforcement learning environment registered under Gymnasium (`F1RacerRl-F1-Racer-F1-Car`).
+- **Vision-Only Deployable Policy:** The deployed actor policy never receives ground-truth coordinates, GPS, LiDAR, or simulation oracle states. Perception is purely vision-based from a single onboard nose camera.
+- **GPU Classical Computer Vision:** `TrackDetector` runs fully vectorized on CUDA tensors ($R+G-2B$ yellow boundary segmentation, near/far horizon ROIs, centroid tracking) yielding lateral error, heading error, and confidence with zero inference lag.
+- **Asymmetric Actor-Critic (PPO):** 7D vision-kinematic actor state $[e_\text{lat}, e_\text{heading}, \text{conf}, v_x, v_y, \omega_z, \delta_\text{steer}]$ deployed at 30 Hz; privileged 8D ground-truth state used exclusively by the simulation Critic.
 - **Procedural 3D Track & Spatial Oracle:** Continuous spline-based track oracle computing exact Frenet frame projection ($e_\text{lat}$, $e_\text{heading}$) and lookahead guidance vectors.
-- **State-Based RL Formulation:** Fast, stable 8D observation vector (forward velocity, yaw rate, lateral error, heading alignment error, lookahead waypoints, previous action).
-- **Free Viewport Camera:** Unconstrained world perspective camera configured for multi-environment monitoring and visualization.
 
 ---
 
-## Quick Start
+## Command Reference & Quick Start
 
-### 1. Verify Extension & List Registered Environments
-Verify that the `f1_racer_rl` extension is recognized by Isaac Lab:
-
+Always run commands from the project root using the dedicated Isaac Lab 3.0 Python interpreter:
 ```bash
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python f1_racer_rl/scripts/list_envs.py
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python <script_path> [options]
 ```
 
-### 2. Verify Simulation Pipeline & Articulation
-Tests the USD track stage, official Leatherback suspension physics, state observations, and camera sensor rendering:
+### 1. Training (RSL-RL PPO)
 
+- **Fast Headless Training (Recommended for Maximum FPS):**
+  ```bash
+  /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/train.py --num_envs 64 --max_iterations 500
+  ```
+- **Live Visualized Training (Single or Multi-Env with 3D GUI):**
+  ```bash
+  /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/train.py --num_envs 1 --viz kit
+  ```
+- **Resume Training from Checkpoint:**
+  ```bash
+  /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/train.py --num_envs 64 --checkpoint latest
+  ```
+
+### 2. Policy Evaluation & Playback
+
+- **Single Lap Challenge on Unseen Procedural Track (with Live Vision HUD):**
+  Generates a brand new procedural track and evaluates the policy completing a full lap with live 3D chase camera and performance scorecard:
+  ```bash
+  /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_single_lap.py --track_type organic --seed 123 --viz kit
+  ```
+  *Options:*
+  - `--track_type`: `organic`, `wavy_circle`, or `circuit`.
+  - `--seed`: Procedural seed for track geometry (e.g. `123`, `42`).
+  - `--chase_cam`: Locks camera in 3rd-person chase mode behind the car (by default, free camera).
+  - `--show_vision` / `--no_show_vision`: Toggle the real-time OpenCV HUD window.
+
+- **Playback on Default Training Circuit:**
+  ```bash
+  /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/play.py --checkpoint latest --viz kit
+  ```
+
+### 3. Interactive Manual Driving (Smoke Test)
+
+Drive the car interactively with the keyboard to verify suspension, grip, and steering while viewing real-time vision feedback:
 ```bash
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/verify_pipeline.py --headless
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/teleop_car.py
 ```
+*Controls (active inside 3D viewport):*
+- `W` / `Up Arrow`: Accelerate forward smoothly
+- `S` / `Down Arrow`: Brake / Reverse
+- `A` / `Left Arrow`: Steer Left
+- `D` / `Right Arrow`: Steer Right
+- `SPACE`: Handbrake (instant stop)
+- `R`: Reset car back to starting line
 
-### 3. Step Random Agent in Parallel Environments
-Runs interactive multi-environment stepping with the random agent baseline:
+### 4. Computer Vision Diagnostics
 
+Runs camera rendering, GPU line segmentation, dual-ROI error estimation, and compares vision against ground truth:
 ```bash
-# Run headless with 2 parallel environments
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/play_random_agent.py --num_envs 2 --steps 60 --headless
-
-# Or launch with 3D GUI window
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/play_random_agent.py --num_envs 2 --steps 60
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_vision_pipeline_live.py --steps 30
 ```
+Generates a 4-panel diagnostic dashboard saved to `outputs/vision_pipeline_dashboard.png`.
 
-### 4. Generate Procedural Track Arena (USD)
-Generates standalone racing circuits and exports geometry data (`.npz`) and USD stages:
-
+### 5. TensorBoard Monitoring
 ```bash
-# Generate a natural motorsport circuit (Headless)
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/generate_wavy_track.py --headless --track_type circuit --arena_name arena_circuit_01
-
-# Or launch with the interactive 3D Isaac Sim GUI
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/generate_wavy_track.py
-```
-
-### 5. Test Computer Vision Pipeline
-Run GPU-accelerated classical computer vision tests on synthetic track views or live simulation:
-
-```bash
-# Standalone PyTorch GPU vision test (unit test across 4 driving scenarios)
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_vision_pipeline.py
-
-# Live Isaac Lab simulation test with multi-panel diagnostic dashboard
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_vision_pipeline_live.py --headless
-```
-
-### 6. View Robot in Simulation
-Spawns the Leatherback robot between boundary lines and captures the onboard camera view:
-
-```bash
-/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/view_leatherback_camera.py --headless
+/home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/tensorboard --logdir logs/rsl_rl/f1_racer_leatherback --port 6006
 ```
 
 ---
 
 ## Project Structure
 
+For detailed class taxonomies and system design, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
 ```text
 f1_racer/
-├── f1_racer_rl/                    # Isaac Lab Extension package
-│   ├── config/extension.toml       # Omniverse extension definition
-│   ├── pyproject.toml              # Extension installation metadata
-│   ├── src/f1_racer_rl/
-│   │   ├── assets/                 # Official Leatherback robot & track assets
-│   │   │   ├── data/               # USD assets (leatherback.usd, track.usd, track_data.npz)
-│   │   │   └── leatherback.py      # Articulation & suspension actuator configuration
-│   │   └── tasks/f1_racer/         # Task MDP formulation
-│   │       ├── config/f1_car/      # Environment & RSL-RL PPO agent configs
-│   │       └── mdp/                # Actions, observations, rewards, terminations, track oracle
-│   └── tests/                      # Gym registration and environment tests
-├── scripts/
-│   ├── test_vision_pipeline.py     # Fast GPU classical computer vision unit tests
-│   ├── test_vision_pipeline_live.py# Live Isaac Lab simulation CV test & diagnostic dashboard
-│   ├── verify_pipeline.py          # Isaac Lab pipeline & official articulation test
-│   ├── play_random_agent.py        # Multi-environment random agent stepping
-│   ├── generate_wavy_track.py      # Procedural track generator & scene builder
-│   └── view_leatherback_camera.py  # Robot USD staging & camera test
-├── src/leatherback_racer/
-│   ├── arena/
-│   │   └── procedural_track.py     # Ribbon mesh math & USD stage generation
-│   └── vision/
-│       └── track_detector.py       # Batched GPU classical CV track boundary detector
-└── PLAN.md                         # Detailed RL formulation & training roadmap
+├── README.md                       # Main project documentation & CLI reference
+├── ARCHITECTURE.md                 # System architecture, class taxonomy & design specs
+├── pyproject.toml                  # Python package configuration (leatherback-racer)
+│
+├── src/leatherback_racer/          # Core Python library
+│   ├── vision/                     # Classes: TrackDetector, TrackVisionHUD
+│   ├── track/                      # Classes: ProceduralTrack, TrackConfig, TrackOracle
+│   ├── teleop/                     # Class: KeyboardTeleop
+│   └── evaluation/                 # Classes: CheckpointLoader, SingleLapEvaluator, VisionPipelineTester
+│
+├── f1_racer_rl/                    # Isaac Lab Extension (Gymnasium task registration)
+│   ├── pyproject.toml              # Extension package setup
+│   └── src/f1_racer_rl/
+│       ├── assets/                 # Articulation definition & active track USD/NPZ
+│       │   ├── leatherback.py      # Articulation & suspension actuator configuration
+│       │   └── data/               # track.usd, track_data.npz, circuit backups
+│       └── tasks/f1_racer/
+│           ├── config/f1_car/      # Environment & PPO hyperparameter configs
+│           └── mdp/                # Class-grouped MDP terms (Observations, Rewards, Terminations, Events)
+│
+├── scripts/                        # Modular CLI entry points
+│   ├── train.py                    # Multi-environment PPO training launcher
+│   ├── play.py                     # Policy playback & evaluation
+│   ├── teleop_car.py               # Keyboard driving smoke test + live Vision HUD
+│   ├── test_single_lap.py          # Procedural single lap evaluation + live Vision HUD
+│   └── test_vision_pipeline_live.py# Live vision diagnostics & dashboard generator
+│
+├── outputs/                        # Test artifacts, dashboards & procedural tracks
+└── logs/                           # Training runs, checkpoints, and TensorBoard logs
 ```
-
----
-
-## Documentation
-
-- **[PLAN.md](PLAN.md):** Full reinforcement learning problem formulation, reward functions, and training roadmap.

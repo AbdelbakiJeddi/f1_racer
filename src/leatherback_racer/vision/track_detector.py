@@ -143,20 +143,21 @@ class BatchedVisionTrackDetector(nn.Module):
         confidence = torch.where(both_detected, (conf_l + conf_r) * 0.5, torch.max(conf_l, conf_r) * 0.85)
         return center_x, confidence
 
-    def forward(
-        self, rgb_images: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Processes a batch of camera frames.
+    def detect_detailed(self, rgb_images: torch.Tensor) -> dict:
+        """Processes a batch of camera frames and returns detailed detection geometry.
         
         Args:
-            rgb_images: Tensor of shape (N, H, W, 3) or (N, 3, H, W)
-                        in range [0, 255] (uint8) or [0.0, 1.0] (float32).
+            rgb_images: Tensor of shape (N, H, W, 3) or (N, 3, H, W).
         Returns:
-            errors: (N, 3) tensor of [e_lat, e_heading, confidence]
-                    - e_lat: [-1.0, 1.0] normalized lateral deviation from centerline.
-                    - e_heading: [-pi, pi] heading angular error relative to path.
-                    - confidence: [0.0, 1.0] line detection quality indicator.
-            mask: (N, H, W) binary/soft line mask for visualization/debugging.
+            dict containing:
+                features: (N, 3) [e_lat, e_heading, confidence]
+                mask: (N, H, W) binary line probability mask
+                x_near: (N, 1) normalized near center in [-1, 1]
+                x_far: (N, 1) normalized far center in [-1, 1]
+                conf_near: (N, 1) confidence at near horizon
+                conf_far: (N, 1) confidence at far horizon
+                near_y: int near horizon scanline row
+                far_y: int far horizon scanline row
         """
         # Ensure (N, 3, H, W)
         if rgb_images.dim() == 3:
@@ -211,4 +212,42 @@ class BatchedVisionTrackDetector(nn.Module):
         confidence = (conf_near + conf_far) * 0.5
 
         features = torch.cat([e_lat, e_heading, confidence], dim=-1)  # (N, 3)
-        return features, mask
+
+        near_y = (near_start + near_end) // 2
+        far_y = (far_start + far_end) // 2
+
+        return {
+            "features": features,
+            "mask": mask,
+            "x_near": x_near,
+            "x_far": x_far,
+            "conf_near": conf_near,
+            "conf_far": conf_far,
+            "near_y": near_y,
+            "far_y": far_y,
+            "near_roi_range": self.near_roi_range,
+            "far_roi_range": self.far_roi_range,
+        }
+
+    def forward(
+        self, rgb_images: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Processes a batch of camera frames.
+        
+        Args:
+            rgb_images: Tensor of shape (N, H, W, 3) or (N, 3, H, W)
+                        in range [0, 255] (uint8) or [0.0, 1.0] (float32).
+        Returns:
+            errors: (N, 3) tensor of [e_lat, e_heading, confidence]
+                    - e_lat: [-1.0, 1.0] normalized lateral deviation from centerline.
+                    - e_heading: [-pi, pi] heading angular error relative to path.
+                    - confidence: [0.0, 1.0] line detection quality indicator.
+            mask: (N, H, W) binary/soft line mask for visualization/debugging.
+        """
+        details = self.detect_detailed(rgb_images)
+        return details["features"], details["mask"]
+
+
+# Clean class alias
+TrackDetector = BatchedVisionTrackDetector
+

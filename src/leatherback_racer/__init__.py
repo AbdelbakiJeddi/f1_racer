@@ -1,10 +1,24 @@
-# Leatherback Autonomous Racer: Procedural Arenas and Classical Vision Processing
-from . import vision
+"""Leatherback Autonomous Racer: Core perception, track geometry, control, and evaluation."""
 
-def __getattr__(name):
-    if name == "arena":
-        from . import arena
-        return arena
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+from .vision import BatchedVisionTrackDetector, TrackDetector, TrackVisionHUD
+from .track import ProceduralTrack, TrackConfig, TrackOracle
+from .teleop import KeyboardTeleop
+from .evaluation import CheckpointLoader, SingleLapEvaluator, LapMetrics, VisionPipelineTester
 
-__all__ = ["arena", "vision"]
+__all__ = [
+    # Perception
+    "BatchedVisionTrackDetector",
+    "TrackDetector",
+    "TrackVisionHUD",
+    # Track & Geometry
+    "ProceduralTrack",
+    "TrackConfig",
+    "TrackOracle",
+    # Control
+    "KeyboardTeleop",
+    # Evaluation
+    "CheckpointLoader",
+    "SingleLapEvaluator",
+    "LapMetrics",
+    "VisionPipelineTester",
+]

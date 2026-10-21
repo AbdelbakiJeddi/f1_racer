@@ -1,4 +1,4 @@
-"""Manual smoke test: drive the F1 Leatherback car interactively with keyboard.
+"""Interactive manual keyboard teleoperation for the F1 Leatherback car in Isaac Lab.
 
 Usage:
     /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/teleop_car.py
@@ -12,6 +12,8 @@ Controls (active inside the 3D simulation window):
     R               : Reset car to track starting line
 """
 
+from __future__ import annotations
+
 import argparse
 import math
 import sys
@@ -19,90 +21,34 @@ import torch
 
 from isaaclab.app import AppLauncher
 
-# Setup CLI argument parser with Isaac Lab launcher args
+# 1. Setup CLI argument parser with Isaac Lab launcher args
 parser = argparse.ArgumentParser(description="Manual drive smoke test for Leatherback F1 Racer.")
+parser.add_argument("--chase_cam", action="store_true", default=False, help="Lock camera in 3rd-person chase mode behind the car (default: False, camera is free).")
+parser.add_argument("--show_vision", action="store_true", default=True, help="Display live real-time HUD window with onboard camera and detected centerline (default: True).")
+parser.add_argument("--no_show_vision", dest="show_vision", action="store_false", help="Disable vision HUD window.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
-# Ensure 3D Kit GUI window opens by default
 if args_cli.visualizer is None:
     args_cli.visualizer = "kit"
 
-# Launch Isaac Lab simulation with GUI and cameras enabled
+# 2. Launch Isaac Lab simulation
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import carb
+# 3. Post-launch imports
 import gymnasium as gym
-import omni.appwindow
 
 import f1_racer_rl.tasks  # noqa: F401
-import leatherback_racer  # noqa: F401
 from f1_racer_rl.tasks.f1_racer.config.f1_car.env_cfg import F1RacerEnvCfg
 from isaaclab.utils.math import euler_xyz_from_quat
-
-
-class KeyboardTeleop:
-    """Listens to Omniverse window keyboard events for manual driving."""
-
-    def __init__(self):
-        self._appwindow = omni.appwindow.get_default_app_window()
-        self._input = carb.input.acquire_input_interface()
-        self._keyboard = self._appwindow.get_keyboard()
-
-        self.steer_cmd = 0.0      # [-1.0, 1.0]
-        self.throttle_cmd = -1.0  # [-1.0, 1.0] (-1.0 is stopped / 0 speed)
-        self.reset_requested = False
-
-        self._keys_pressed = set()
-        self._sub = self._input.subscribe_to_keyboard_events(self._keyboard, self._on_key_event)
-
-    def _on_key_event(self, event, *args, **kwargs):
-        key = event.input.name
-        if event.type == carb.input.KeyboardEventType.KEY_PRESS:
-            self._keys_pressed.add(key)
-            if key == "R":
-                self.reset_requested = True
-        elif event.type == carb.input.KeyboardEventType.KEY_RELEASE:
-            self._keys_pressed.discard(key)
-        return True
-
-    def update(self) -> tuple[float, float, bool]:
-        """Returns (steer [-1, 1], throttle [-1, 1], reset_requested)."""
-        # Steering input
-        steer_target = 0.0
-        if "A" in self._keys_pressed or "LEFT" in self._keys_pressed:
-            steer_target += 1.0  # Turn left (+steer)
-        if "D" in self._keys_pressed or "RIGHT" in self._keys_pressed:
-            steer_target -= 1.0  # Turn right (-steer)
-
-        # Smooth steering filter
-        self.steer_cmd = 0.7 * self.steer_cmd + 0.3 * steer_target
-
-        # Throttle input: -1.0 = stopped, +1.0 = full forward (2.5 m/s)
-        if "SPACE" in self._keys_pressed:
-            self.throttle_cmd = -1.0  # Handbrake
-        elif "W" in self._keys_pressed or "UP" in self._keys_pressed:
-            self.throttle_cmd = min(1.0, self.throttle_cmd + 0.08)
-        elif "S" in self._keys_pressed or "DOWN" in self._keys_pressed:
-            self.throttle_cmd = max(-1.0, self.throttle_cmd - 0.12)
-        else:
-            # Coast down to stop when no throttle pressed
-            self.throttle_cmd = max(-1.0, self.throttle_cmd - 0.05)
-
-        do_reset = self.reset_requested
-        self.reset_requested = False
-        return self.steer_cmd, self.throttle_cmd, do_reset
-
-    def close(self):
-        if self._sub is not None:
-            self._input.unsubscribe_to_keyboard_events(self._keyboard, self._sub)
-            self._sub = None
+from leatherback_racer.teleop import KeyboardTeleop
+from leatherback_racer.vision import BatchedVisionTrackDetector, TrackVisionHUD
 
 
 def main():
     print("\n" + "=" * 78)
-    print(" F1 RACER: INTERACTIVE MANUAL DRIVE SMOKE TEST")
+    print(" 🏎️  F1 RACER: INTERACTIVE MANUAL DRIVE TELEOP")
     print("=" * 78)
     print(" Controls (Click inside the 3D window to focus):")
     print("   [W / UP]     : Accelerate forward")
@@ -116,7 +62,7 @@ def main():
     env_cfg = F1RacerEnvCfg()
     env_cfg.scene.num_envs = 1
 
-    # Position the viewport camera behind and slightly above the car for great visibility
+    # Position viewport camera behind and above car
     env_cfg.sim.default_visualizer_cfg.eye = (19.5, 4.0, 1.8)
     env_cfg.sim.default_visualizer_cfg.lookat = (17.0, 3.9, 0.05)
     env_cfg.viewer.eye = (19.5, 4.0, 1.8)
@@ -124,7 +70,16 @@ def main():
 
     env = gym.make("F1RacerRl-F1-Racer-F1-Car", cfg=env_cfg)
     robot = env.unwrapped.scene["robot"]
+    camera = env.unwrapped.scene["camera"]
     device = env.unwrapped.device
+
+    # Initialize Computer Vision Detector & Live HUD
+    detector = BatchedVisionTrackDetector(img_h=128, img_w=128).to(device)
+    hud = TrackVisionHUD(
+        window_name="F1 Racer Teleop: Onboard Camera & Centerline HUD",
+        panel_size=320,
+        enable_display=args_cli.show_vision,
+    )
 
     teleop = KeyboardTeleop()
     obs, info = env.reset()
@@ -157,20 +112,32 @@ def main():
             pitch_deg = torch.rad2deg(pitch)[0].item()
             yaw_rad = yaw[0].item()
 
-            # Dynamic 3rd-person chase camera smoothly tracking the car
-            cam_dist = 2.2
-            cam_height = 0.85
-            cam_x = root_pos[0] - cam_dist * math.cos(yaw_rad)
-            cam_y = root_pos[1] - cam_dist * math.sin(yaw_rad)
-            cam_z = root_pos[2] + cam_height
-            env.unwrapped.sim.set_camera_view(
-                eye=[float(cam_x), float(cam_y), float(cam_z)],
-                target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)]
-            )
+            # Dynamic 3rd-person chase camera smoothly tracking the car (if enabled)
+            if args_cli.chase_cam:
+                cam_dist = 2.2
+                cam_height = 0.85
+                cam_x = root_pos[0] - cam_dist * math.cos(yaw_rad)
+                cam_y = root_pos[1] - cam_dist * math.sin(yaw_rad)
+                cam_z = root_pos[2] + cam_height
+                env.unwrapped.sim.set_camera_view(
+                    eye=[float(cam_x), float(cam_y), float(cam_z)],
+                    target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)],
+                )
 
             body_pos = robot.data.body_pos_w[0].cpu().numpy()
             wheel_zs = [body_pos[idx, 2] for idx in wheel_indices]
             knuckle_deg = torch.rad2deg(robot.data.joint_pos[0, steer_fl_idx]).item()
+
+            # Live Computer Vision HUD update
+            raw_rgb = camera.data.output["rgb"]
+            detection_details = detector.detect_detailed(raw_rgb)
+            telemetry_data = {
+                "speed_kmh": speed_kmh,
+                "speed_ms": speed_ms,
+                "steer_deg": knuckle_deg,
+                "elapsed_s": step * env.unwrapped.step_dt,
+            }
+            hud.update(raw_rgb, detection_details, telemetry=telemetry_data, wait_ms=1)
 
             if step % 15 == 0:
                 print(
@@ -182,6 +149,7 @@ def main():
 
             step += 1
     finally:
+        hud.close()
         teleop.close()
         env.close()
         simulation_app.close()
@@ -189,4 +157,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

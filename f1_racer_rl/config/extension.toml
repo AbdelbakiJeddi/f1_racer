@@ -22,11 +22,6 @@ keywords = ["extension", "template", "isaaclab"]
 "isaaclab_tasks" = {}
 # NOTE: Add additional dependencies here
 
-# UI extension module: Kit imports this submodule directly and scans it for ``omni.ext.IExt``
-# subclasses. Kept separate from the package root so ``import f1_racer_rl`` stays omni-free headless.
-[[python.module]]
-name = "f1_racer_rl.ui_extension_example"
-
 [isaac_lab_settings]
 # TODO: Uncomment and list any apt dependencies here.
 #       If none, leave it commented out.

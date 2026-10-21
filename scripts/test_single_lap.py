@@ -1,4 +1,4 @@
-"""Test trained F1 Racer policy on a new unseen track for a single full lap.
+"""Test trained F1 Racer policy on a new unseen procedural track for a single full lap.
 
 Usage:
     /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_single_lap.py --track_type organic --seed 123 --viz kit
@@ -14,11 +14,11 @@ Options:
 from __future__ import annotations
 
 import argparse
-import glob
 import math
 import os
-import sys
+import shutil
 import time
+import cv2
 import numpy as np
 import torch
 
@@ -31,6 +31,9 @@ parser.add_argument("--seed", type=int, default=123, help="Procedural seed for t
 parser.add_argument("--radius", type=float, default=13.0, help="Base radius of track in meters.")
 parser.add_argument("--amplitude", type=float, default=2.2, help="Amplitude of curves in meters.")
 parser.add_argument("--checkpoint", type=str, default="latest", help="Path to checkpoint .pt or 'latest'.")
+parser.add_argument("--chase_cam", action="store_true", default=False, help="Lock camera in 3rd-person chase mode behind the car (default: False, camera is free).")
+parser.add_argument("--show_vision", action="store_true", default=True, help="Display live real-time HUD window with onboard camera and detected centerline (default: True).")
+parser.add_argument("--no_show_vision", dest="show_vision", action="store_false", help="Disable the live vision HUD window.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -42,96 +45,15 @@ launcher = AppLauncher(args_cli)
 simulation_app = launcher.app
 
 # 2. Imports after Kit startup
-from pxr import Usd, UsdGeom
 import gymnasium as gym
 
 import f1_racer_rl.tasks  # noqa: F401
-import leatherback_racer  # noqa: F401
+from f1_racer_rl.assets import F1_RACER_RL_ASSETS_DIR
 from f1_racer_rl.tasks.f1_racer.config.f1_car.env_cfg import F1RacerEnvCfg
-from f1_racer_rl.tasks.f1_racer.mdp.track_oracle import TrackOracle
-from isaaclab.utils.math import euler_xyz_from_quat, quat_from_euler_xyz
-from leatherback_racer.arena.procedural_track import ProceduralTrack, TrackConfig
-
-
-def find_latest_checkpoint() -> str:
-    """Finds the most recent model_*.pt checkpoint."""
-    ckpts = glob.glob("logs/rsl_rl/f1_racer_leatherback/*/*.pt")
-    if not ckpts:
-        raise FileNotFoundError("No trained checkpoints found in logs/rsl_rl/f1_racer_leatherback/!")
-    ckpts.sort(key=os.path.getmtime, reverse=True)
-    return ckpts[0]
-
-
-def load_actor_policy(checkpoint_path: str, device: str = "cuda") -> torch.nn.Module:
-    """Reconstructs and loads the trained actor MLP from an RSL-RL checkpoint."""
-    print(f"[Policy] Loading weights from: {checkpoint_path}")
-    ckpt = torch.load(checkpoint_path, map_location=device)
-    state_dict = ckpt["actor_state_dict"]
-
-    mlp = torch.nn.Sequential(
-        torch.nn.Linear(7, 256),
-        torch.nn.ELU(),
-        torch.nn.Linear(256, 128),
-        torch.nn.ELU(),
-        torch.nn.Linear(128, 64),
-        torch.nn.ELU(),
-        torch.nn.Linear(64, 2),
-    ).to(device)
-
-    mlp_dict = {k[4:]: v for k, v in state_dict.items() if k.startswith("mlp.")}
-    mlp.load_state_dict(mlp_dict)
-    mlp.eval()
-    print("  ✅ Actor MLP (7 -> 256 -> 128 -> 64 -> 2) loaded successfully.")
-    return mlp
-
-
-def generate_eval_track(track_type: str, seed: int, radius: float, amplitude: float) -> tuple[str, str, ProceduralTrack]:
-    """Generates a new procedural track USD and NPZ metadata in outputs/eval_track/."""
-    out_dir = os.path.abspath("outputs/eval_track")
-    os.makedirs(out_dir, exist_ok=True)
-    usd_path = os.path.join(out_dir, f"track_{track_type}_{seed}.usd")
-    npz_path = os.path.join(out_dir, f"track_{track_type}_{seed}_data.npz")
-
-    cfg = TrackConfig(
-        track_type=track_type,
-        seed=seed,
-        radius=radius,
-        amplitude=amplitude,
-        track_width=1.2,
-        line_thickness=0.08,
-        num_samples=500,
-    )
-    track = ProceduralTrack(cfg)
-
-    # Save NPZ metadata
-    np.savez(
-        npz_path,
-        centerline=track.centerline,
-        tangents=track.tangents,
-        normals=track.normals,
-        left_line=track.left_line,
-        right_line=track.right_line,
-        track_width=track.cfg.track_width,
-        is_closed=track.is_closed,
-    )
-
-    # Save USD mesh ribbons
-    if os.path.exists(usd_path):
-        os.remove(usd_path)
-    stage = Usd.Stage.CreateNew(usd_path)
-    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
-    track.build_usd_meshes(stage, root_path="/Track")
-    stage.GetRootLayer().Save()
-
-    total_len = np.sum(np.linalg.norm(np.diff(track.centerline, axis=0), axis=1)) + np.linalg.norm(track.centerline[0] - track.centerline[-1])
-    print(f"\n[Track Generation] Created new '{track_type}' track (seed={seed}):")
-    print(f"  • Total Lap Length: {total_len:.1f} meters")
-    print(f"  • Centerline Waypoints: {track.centerline.shape[0]} points")
-    print(f"  • USD Path: {usd_path}")
-    print(f"  • NPZ Path: {npz_path}")
-
-    return usd_path, npz_path, track
+from isaaclab.utils.math import euler_xyz_from_quat
+from leatherback_racer.evaluation import CheckpointLoader, SingleLapEvaluator
+from leatherback_racer.track import TrackOracle
+from leatherback_racer.vision import BatchedVisionTrackDetector, TrackVisionHUD
 
 
 def main():
@@ -140,12 +62,12 @@ def main():
     print("=" * 80)
 
     # 1. Resolve Checkpoint
-    ckpt_path = find_latest_checkpoint() if args_cli.checkpoint == "latest" else args_cli.checkpoint
+    ckpt_path = CheckpointLoader.find_latest() if args_cli.checkpoint == "latest" else args_cli.checkpoint
     if not os.path.exists(ckpt_path):
         raise FileNotFoundError(f"Checkpoint not found at: {ckpt_path}")
 
-    # 2. Generate New Unseen Track
-    usd_path, npz_path, track = generate_eval_track(
+    # 2. Generate New Procedural Track
+    usd_path, npz_path, track = SingleLapEvaluator.generate_eval_track(
         track_type=args_cli.track_type,
         seed=args_cli.seed,
         radius=args_cli.radius,
@@ -160,29 +82,39 @@ def main():
     start_pos_2d = track.centerline[0]
     start_tx, start_ty = track.tangents[0]
     start_yaw = math.atan2(start_ty, start_tx)
-    start_quat = quat_from_euler_xyz(torch.tensor([0.0]), torch.tensor([0.0]), torch.tensor([start_yaw]))[0]
 
     # 4. Configure Isaac Lab Environment
     env_cfg = F1RacerEnvCfg()
     env_cfg.scene.num_envs = 1
-    env_cfg.episode_length_s = 90.0  # Allow plenty of time for full lap
+    env_cfg.episode_length_s = 120.0
+    env_cfg.terminations.off_track.params["max_lateral_distance"] = 2.5
 
-    # Replace track mesh with new track
-    env_cfg.scene.track.spawn.usd_path = usd_path
-
-    # Set robot start pose
-    env_cfg.scene.robot.init_state.pos = (float(start_pos_2d[0]), float(start_pos_2d[1]), 0.035)
-    env_cfg.scene.robot.init_state.rot = (float(start_quat[0]), float(start_quat[1]), float(start_quat[2]), float(start_quat[3]))
+    cam_start_x = start_pos_2d[0] - 4.0 * math.cos(start_yaw)
+    cam_start_y = start_pos_2d[1] - 4.0 * math.sin(start_yaw)
+    env_cfg.sim.default_visualizer_cfg.eye = (float(cam_start_x), float(cam_start_y), 2.5)
+    env_cfg.sim.default_visualizer_cfg.lookat = (float(start_pos_2d[0]), float(start_pos_2d[1]), 0.1)
+    env_cfg.viewer.eye = (float(cam_start_x), float(cam_start_y), 2.5)
+    env_cfg.viewer.lookat = (float(start_pos_2d[0]), float(start_pos_2d[1]), 0.1)
 
     print(f"\n[Environment] Spawning Leatherback at start line: ({start_pos_2d[0]:.2f}, {start_pos_2d[1]:.2f}) heading: {math.degrees(start_yaw):+.1f}°")
 
     env = gym.make("F1RacerRl-F1-Racer-F1-Car", cfg=env_cfg)
     device = env.unwrapped.device
     robot = env.unwrapped.scene["robot"]
+    camera = env.unwrapped.scene["camera"]
+    steer_fl_idx = robot.data.joint_names.index("Knuckle__Upright__Front_Left") if "Knuckle__Upright__Front_Left" in robot.data.joint_names else 0
 
-    # Load Actor Policy
-    policy = load_actor_policy(ckpt_path, device=str(device))
+    # Initialize Computer Vision Detector & Live HUD
+    detector = BatchedVisionTrackDetector(img_h=128, img_w=128).to(device)
+    hud = TrackVisionHUD(
+        window_name="F1 Racer: Onboard Camera & Centerline HUD",
+        panel_size=320,
+        enable_display=args_cli.show_vision,
+    )
+    last_hud_frame = None
 
+    # Load Trained Policy
+    policy = CheckpointLoader.load_actor_policy(ckpt_path, device=str(device))
     obs, _ = env.reset()
 
     # Lap Tracking State
@@ -191,7 +123,6 @@ def main():
     lap_completed = False
     halfway_passed = False
     step_count = 0
-    start_time = time.time()
 
     speeds = []
     lat_errors = []
@@ -204,8 +135,7 @@ def main():
 
     try:
         while simulation_app.is_running() and not lap_completed:
-            # Policy inference
-            policy_obs = obs["policy"]  # (1, 7)
+            policy_obs = obs["policy"]
             with torch.no_grad():
                 action = policy(policy_obs)
 
@@ -245,22 +175,34 @@ def main():
             if closest_idx > (total_waypoints * 0.5):
                 halfway_passed = True
 
-            # Lap finish detection: car passed halfway and now returns near start index (index < 15)
             if halfway_passed and closest_idx < 15 and max_idx_reached > (total_waypoints * 0.85):
                 lap_completed = True
 
-            # Update dynamic 3rd-person chase camera
-            cam_dist = 2.4
-            cam_height = 0.95
-            cam_x = root_pos[0] - cam_dist * math.cos(yaw_rad)
-            cam_y = root_pos[1] - cam_dist * math.sin(yaw_rad)
-            cam_z = root_pos[2] + cam_height
-            env.unwrapped.sim.set_camera_view(
-                eye=[float(cam_x), float(cam_y), float(cam_z)],
-                target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)]
-            )
+            # Chase cam
+            if args_cli.chase_cam:
+                cam_dist = 2.4
+                cam_height = 0.95
+                cam_x = root_pos[0] - cam_dist * math.cos(yaw_rad)
+                cam_y = root_pos[1] - cam_dist * math.sin(yaw_rad)
+                cam_z = root_pos[2] + cam_height
+                env.unwrapped.sim.set_camera_view(
+                    eye=[float(cam_x), float(cam_y), float(cam_z)],
+                    target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)]
+                )
 
-            # Telemetry print
+            # Live HUD
+            raw_rgb = camera.data.output["rgb"]
+            detection_details = detector.detect_detailed(raw_rgb)
+            steer_angle_deg = math.degrees(robot.data.joint_pos[0, steer_fl_idx].item())
+            telemetry_data = {
+                "speed_kmh": speed_kmh,
+                "speed_ms": speed_ms,
+                "progress_pct": progress_pct,
+                "steer_deg": steer_angle_deg,
+                "elapsed_s": step_count * env.unwrapped.step_dt,
+            }
+            last_hud_frame = hud.update(raw_rgb, detection_details, telemetry=telemetry_data, wait_ms=1)
+
             if step_count % 15 == 0:
                 elapsed_s = step_count * env.unwrapped.step_dt
                 print(
@@ -277,12 +219,17 @@ def main():
                 print("\n⚠️ Environment triggered termination or truncation before lap finished!")
                 break
 
+    except Exception as e:
+        import traceback
+        print("\n❌ EXCEPTION CAUGHT IN MAIN LOOP:")
+        traceback.print_exc()
+
     finally:
         total_time_s = step_count * env.unwrapped.step_dt
-        avg_speed_ms = np.mean(speeds) if speeds else 0.0
-        max_speed_kmh = (np.max(speeds) * 3.6) if speeds else 0.0
-        mean_lat_cm = np.mean(lat_errors) * 100.0 if lat_errors else 0.0
-        max_lat_cm = np.max(lat_errors) * 100.0 if lat_errors else 0.0
+        avg_speed_ms = float(np.mean(speeds)) if speeds else 0.0
+        max_speed_kmh = float(np.max(speeds) * 3.6) if speeds else 0.0
+        mean_lat_cm = float(np.mean(lat_errors) * 100.0) if lat_errors else 0.0
+        max_lat_cm = float(np.max(lat_errors) * 100.0) if lat_errors else 0.0
         lane_keeping_pct = (1.0 - (off_track_count / max(1, step_count))) * 100.0
 
         print("\n" + "=" * 80)
@@ -302,8 +249,24 @@ def main():
         print(f"  Lane Keeping    : {lane_keeping_pct:.1f}% on-track accuracy")
         print("=" * 80 + "\n")
 
+        # Save snapshot of vision HUD
+        if last_hud_frame is not None:
+            os.makedirs("outputs/eval_track", exist_ok=True)
+            snapshot_path = "outputs/eval_track/single_lap_vision_hud.png"
+            cv2.imwrite(snapshot_path, last_hud_frame)
+            print(f"  📸 Saved high-resolution Vision HUD snapshot to: {snapshot_path}")
+
+        hud.close()
         env.close()
         simulation_app.close()
+
+        # Restore default training circuit track
+        backup_usd = str(F1_RACER_RL_ASSETS_DIR / "track_default_circuit.usd")
+        backup_npz = str(F1_RACER_RL_ASSETS_DIR / "track_default_circuit.npz")
+        if os.path.exists(backup_usd) and os.path.exists(backup_npz):
+            shutil.copyfile(backup_usd, str(F1_RACER_RL_ASSETS_DIR / "track.usd"))
+            shutil.copyfile(backup_npz, str(F1_RACER_RL_ASSETS_DIR / "track_data.npz"))
+            print("[Track Cleanup] Restored default training circuit track successfully.")
 
 
 if __name__ == "__main__":
