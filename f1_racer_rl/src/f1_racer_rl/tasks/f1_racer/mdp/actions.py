@@ -63,7 +63,7 @@ class LeatherbackDriveAction(ActionTerm):
         throttle_action = self._processed_actions[:, 1:2] # [-1.0, 1.0]
 
         # Steering angle target in radians with servo rate limiting to prevent high-frequency wiggling
-        target_steer = steer_action * self.cfg.max_steer_angle
+        target_steer = steer_action * self.cfg.max_steer_angle + self.cfg.steer_trim
         max_delta = self.cfg.max_steer_rate * self._env.step_dt
         steer_delta = torch.clamp(target_steer - self._current_steer, -max_delta, max_delta)
         self._current_steer = self._current_steer + steer_delta
@@ -103,6 +103,9 @@ class LeatherbackDriveActionCfg(ActionTermCfg):
 
     max_steer_angle: float = 0.45
     """Maximum front knuckle steering angle in radians (default: ~25.8 deg)."""
+
+    steer_trim: float = -0.00065
+    """Fine steering trim offset in radians to guarantee dead-straight tracking."""
 
     max_steer_rate: float = 6.0
     """Maximum steering slew rate in rad/s (~340 deg/s, eliminates servo jitter/wobble)."""

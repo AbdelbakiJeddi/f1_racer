@@ -51,10 +51,10 @@ LEATHERBACK_CFG = ArticulationCfg(
         ),
         "steering": ImplicitActuatorCfg(
             joint_names_expr=["Knuckle__Upright__Front_.*"],
-            effort_limit=6.0,
-            velocity_limit=8.0,
-            stiffness=600.0,
-            damping=40.0,
+            effort_limit=8.0,
+            velocity_limit=10.0,
+            stiffness=1200.0,
+            damping=60.0,
         ),
         "throttle": ImplicitActuatorCfg(
             joint_names_expr=["Wheel__.*"],

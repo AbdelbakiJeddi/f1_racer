@@ -57,8 +57,8 @@ class F1RacerSceneCfg(InteractiveSceneCfg):
             size=(500.0, 500.0),
             color=(0.12, 0.12, 0.12),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,
-                dynamic_friction=0.9,
+                static_friction=2.5,
+                dynamic_friction=2.0,
                 restitution=0.0,
             ),
         ),

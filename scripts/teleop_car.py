@@ -155,6 +155,18 @@ def main():
             root_quat = robot.data.root_quat_w[0:1]
             roll, pitch, yaw = euler_xyz_from_quat(root_quat)
             pitch_deg = torch.rad2deg(pitch)[0].item()
+            yaw_rad = yaw[0].item()
+
+            # Dynamic 3rd-person chase camera smoothly tracking the car
+            cam_dist = 2.2
+            cam_height = 0.85
+            cam_x = root_pos[0] - cam_dist * math.cos(yaw_rad)
+            cam_y = root_pos[1] - cam_dist * math.sin(yaw_rad)
+            cam_z = root_pos[2] + cam_height
+            env.unwrapped.sim.set_camera_view(
+                eye=[float(cam_x), float(cam_y), float(cam_z)],
+                target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)]
+            )
 
             body_pos = robot.data.body_pos_w[0].cpu().numpy()
             wheel_zs = [body_pos[idx, 2] for idx in wheel_indices]
