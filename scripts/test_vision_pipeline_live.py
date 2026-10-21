@@ -177,18 +177,40 @@ def main():
     cam_mid = upscale // 2
     draw_raw.line([(cam_mid, 0), (cam_mid, upscale)], fill=(255, 50, 50), width=1)
 
-    # Detected track center at near horizon (Lime green marker)
+    # Detected track center at near and far horizons
     vis_lat_norm = latest["vis_lat"]
-    detected_cx_near = int(cam_mid + vis_lat_norm * cam_mid)
+    vis_head_rad = latest["vis_head"]
+
+    # Reconstruct normalized image coordinates [-1, 1]
+    x_near_img = vis_lat_norm * (detector.half_track_width / detector.near_half_width)
+    detected_cx_near = int(np.clip(cam_mid + x_near_img * cam_mid, 0, upscale - 1))
     near_mid_y = (near_y1 + near_y2) // 2
-    draw_raw.line([(detected_cx_near, near_mid_y - 12), (detected_cx_near, near_mid_y + 12)], fill=(50, 255, 50), width=3)
+
+    # Reconstruct far horizon centroid from heading
+    y_near_phys = x_near_img * detector.near_half_width
+    delta_y_phys = math.tan(vis_head_rad) * detector.longitudinal_delta_d
+    y_far_phys = y_near_phys + delta_y_phys
+    x_far_img = y_far_phys / detector.far_half_width
+    detected_cx_far = int(np.clip(cam_mid + x_far_img * cam_mid, 0, upscale - 1))
+    far_mid_y = (far_y1 + far_y2) // 2
+
+    # Draw trajectory vector line connecting near and far horizon centers
+    draw_raw.line([(detected_cx_near, near_mid_y), (detected_cx_far, far_mid_y)], fill=(255, 255, 0), width=2)
+
+    # Near Horizon marker (Lime green tick)
+    draw_raw.line([(detected_cx_near, near_mid_y - 10), (detected_cx_near, near_mid_y + 10)], fill=(50, 255, 50), width=3)
     draw_raw.line([(cam_mid, near_mid_y), (detected_cx_near, near_mid_y)], fill=(50, 255, 50), width=2)
+
+    # Far Horizon marker (Orange tick)
+    draw_raw.line([(detected_cx_far, far_mid_y - 8), (detected_cx_far, far_mid_y + 8)], fill=(255, 128, 0), width=3)
 
     # 2. Panel B: Line Probability Mask
     pil_mask = Image.fromarray(mask_disp, mode="L").convert("RGB").resize((upscale, upscale), Image.NEAREST)
     draw_mask = ImageDraw.Draw(pil_mask)
     draw_mask.text((5, 5), "Yellow Line Segment Mask", fill=(255, 255, 0))
-    draw_mask.line([(detected_cx_near, near_mid_y - 12), (detected_cx_near, near_mid_y + 12)], fill=(50, 255, 50), width=3)
+    draw_mask.line([(detected_cx_near, near_mid_y), (detected_cx_far, far_mid_y)], fill=(255, 255, 0), width=2)
+    draw_mask.line([(detected_cx_near, near_mid_y - 10), (detected_cx_near, near_mid_y + 10)], fill=(50, 255, 50), width=3)
+    draw_mask.line([(detected_cx_far, far_mid_y - 8), (detected_cx_far, far_mid_y + 8)], fill=(255, 128, 0), width=3)
 
     # 3. Panel C: Scanline Profiles (1D Intensity plot)
     profile_img = Image.new("RGB", (upscale, upscale), (15, 18, 24))

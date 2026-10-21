@@ -69,12 +69,12 @@ class BatchedVisionTrackDetector(nn.Module):
         self.register_buffer("grid_x", grid_x)
 
     def extract_line_mask(self, rgb: torch.Tensor) -> torch.Tensor:
-        """Isolates racing yellow lines against dark tarmac.
+        """Isolates racing yellow lines against dark tarmac with zero noise floor.
         
         Args:
             rgb: (N, 3, H, W) normalized in [0.0, 1.0].
         Returns:
-            mask: (N, H, W) soft mask in [0.0, 1.0].
+            mask: (N, H, W) mask in [0.0, 1.0] with zero background noise floor.
         """
         r = rgb[:, 0]
         g = rgb[:, 1]
@@ -83,14 +83,14 @@ class BatchedVisionTrackDetector(nn.Module):
         # Yellow line formula: High R & G, very low B
         yellow_contrast = torch.clamp(r + g - 2.0 * b, min=0.0, max=1.0)
 
-        # Soft threshold to remain differentiable if ever needed, and smooth noise
-        mask = torch.sigmoid((yellow_contrast - self.yellow_threshold) * 12.0)
-        return mask
+        # Zero-noise floor thresholding: pixels below threshold become strictly 0.0
+        mask = torch.relu(yellow_contrast - self.yellow_threshold) / (1.0 - self.yellow_threshold + 1e-6)
+        return torch.clamp(mask, 0.0, 1.0)
 
     def _find_scanline_center(
         self,
         mask_slice: torch.Tensor,
-        expected_half_span: float = 0.65,
+        expected_half_span: float = 0.80,
         prev_estimate: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Finds track centerline from a horizontal image slice using dual boundary tracking.
@@ -110,21 +110,23 @@ class BatchedVisionTrackDetector(nn.Module):
         left_p = profile_1d[:, :u_mid]
         right_p = profile_1d[:, u_mid:]
 
-        mass_l = left_p.sum(dim=-1, keepdim=True) + 1e-6
-        mass_r = right_p.sum(dim=-1, keepdim=True) + 1e-6
+        mass_l = left_p.sum(dim=-1, keepdim=True)
+        mass_r = right_p.sum(dim=-1, keepdim=True)
 
         grid_l = torch.linspace(-1.0, 0.0, u_mid, device=mask_slice.device, dtype=mask_slice.dtype).view(1, -1)
         grid_r = torch.linspace(0.0, 1.0, W - u_mid, device=mask_slice.device, dtype=mask_slice.dtype).view(1, -1)
 
-        x_l = (left_p * grid_l).sum(dim=-1, keepdim=True) / mass_l
-        x_r = (right_p * grid_r).sum(dim=-1, keepdim=True) / mass_r
+        x_l = (left_p * grid_l).sum(dim=-1, keepdim=True) / (mass_l + 1e-6)
+        x_r = (right_p * grid_r).sum(dim=-1, keepdim=True) / (mass_r + 1e-6)
 
-        conf_l = torch.clamp(mass_l / (u_mid * 0.03), 0.0, 1.0)
-        conf_r = torch.clamp(mass_r / ((W - u_mid) * 0.03), 0.0, 1.0)
+        # A visible line segment has integrated profile mass >= 2.0
+        min_line_mass = 2.0
+        conf_l = torch.clamp(mass_l / min_line_mass, 0.0, 1.0)
+        conf_r = torch.clamp(mass_r / min_line_mass, 0.0, 1.0)
 
-        both_detected = (conf_l > 0.20) & (conf_r > 0.20)
-        only_left = (conf_l > 0.20) & (~both_detected)
-        only_right = (conf_r > 0.20) & (~both_detected)
+        both_detected = (conf_l > 0.60) & (conf_r > 0.60)
+        only_left = (conf_l > 0.60) & (~both_detected)
+        only_right = (conf_r > 0.60) & (~both_detected)
 
         center_both = (x_l + x_r) * 0.5
         center_left = x_l + expected_half_span
@@ -138,7 +140,7 @@ class BatchedVisionTrackDetector(nn.Module):
         )
         center_x = torch.clamp(center_x, -1.0, 1.0)
 
-        confidence = torch.where(both_detected, (conf_l + conf_r) * 0.5, torch.max(conf_l, conf_r) * 0.75)
+        confidence = torch.where(both_detected, (conf_l + conf_r) * 0.5, torch.max(conf_l, conf_r) * 0.85)
         return center_x, confidence
 
     def forward(
@@ -190,7 +192,7 @@ class BatchedVisionTrackDetector(nn.Module):
         far_slice = mask[:, far_start:far_end, :]
 
         # 4. Find Centerlines at both horizons
-        x_near, conf_near = self._find_scanline_center(near_slice, expected_half_span=0.75)
+        x_near, conf_near = self._find_scanline_center(near_slice, expected_half_span=0.80)
         x_far, conf_far = self._find_scanline_center(far_slice, expected_half_span=0.55, prev_estimate=x_near)
 
         # 5. Compute Geometric Errors with perspective ground projection
