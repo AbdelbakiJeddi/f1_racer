@@ -120,7 +120,7 @@ class ActionsCfg:
     drive = mdp.LeatherbackDriveActionCfg(
         asset_name="robot",
         max_steer_angle=0.45,
-        max_speed=3.5,
+        max_speed=2.5,
         min_speed=0.0,
     )
 

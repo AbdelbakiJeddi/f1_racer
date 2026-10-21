@@ -60,11 +60,11 @@ def reset_car_pose_on_track(
         lat_offset = torch.zeros((num_resets, 1), device=asset.device)
     car_pos_2d = c_pt + lat_offset * c_norm  # (num_resets, 2)
 
-    # World position: add local env origins + chassis road clearance z=0.04m
+    # World position: add local env origins + chassis road clearance z=0.035m
     env_origins_2d = env.scene.env_origins[actual_env_ids, :2]
     pos_x = car_pos_2d[:, 0] + env_origins_2d[:, 0]
     pos_y = car_pos_2d[:, 1] + env_origins_2d[:, 1]
-    pos_z = torch.full((num_resets,), 0.06, device=asset.device)
+    pos_z = torch.full((num_resets,), 0.035, device=asset.device)
     positions = torch.stack([pos_x, pos_y, pos_z], dim=-1)
 
     # Heading alignment

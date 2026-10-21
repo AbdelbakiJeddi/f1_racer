@@ -98,11 +98,11 @@ class LeatherbackDriveActionCfg(ActionTermCfg):
     max_steer_angle: float = 0.45
     """Maximum front knuckle steering angle in radians (default: ~25.8 deg)."""
 
-    max_speed: float = 3.5
-    """Maximum driving speed in m/s."""
+    max_speed: float = 2.5
+    """Maximum driving speed in m/s (calibrated for stable 4-wheel ground contact without pitch-up)."""
 
     min_speed: float = 0.0
     """Minimum driving speed in m/s (0.0 prevents moving backwards)."""
 
-    wheel_radius: float = 0.055
+    wheel_radius: float = 0.052
     """Effective wheel radius in meters."""

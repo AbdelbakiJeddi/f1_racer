@@ -28,13 +28,13 @@ LEATHERBACK_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(17.031, 3.923, 0.08),
+        pos=(17.031, 3.923, 0.035),
         rot=(0.0, 0.0, 0.6656, 0.7463),
         joint_pos={
-            "Shock__Rear_Right": -0.025,
-            "Shock__Rear_Left": -0.025,
-            "Shock__Front_Right": 0.025,
-            "Shock__Front_Left": 0.025,
+            "Shock__Rear_Right": -0.01,
+            "Shock__Rear_Left": -0.01,
+            "Shock__Front_Right": 0.01,
+            "Shock__Front_Left": 0.01,
             "Wheel__.*": 0.0,
             "Knuckle__.*": 0.0,
             "Chassis__.*": 0.0,
@@ -46,22 +46,22 @@ LEATHERBACK_CFG = ArticulationCfg(
     actuators={
         "suspension": ImplicitActuatorCfg(
             joint_names_expr=["Shock__Rear_.*", "Shock__Front_.*"],
-            stiffness=8000.0,
-            damping=500.0,
+            stiffness=4000.0,
+            damping=200.0,
         ),
         "steering": ImplicitActuatorCfg(
             joint_names_expr=["Knuckle__Upright__Front_.*"],
-            effort_limit=500.0,
+            effort_limit=50.0,
             velocity_limit=15.0,
             stiffness=3000.0,
             damping=100.0,
         ),
         "throttle": ImplicitActuatorCfg(
             joint_names_expr=["Wheel__.*"],
-            effort_limit=500.0,
+            effort_limit=2.5,
             velocity_limit=100.0,
             stiffness=0.0,
-            damping=2.0,
+            damping=0.5,
         ),
         "linkages": ImplicitActuatorCfg(
             joint_names_expr=["(Chassis__.*|Upright__.*|Shock__Arm__.*)"],
