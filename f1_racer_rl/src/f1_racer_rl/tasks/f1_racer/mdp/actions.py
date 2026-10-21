@@ -37,6 +37,7 @@ class LeatherbackDriveAction(ActionTerm):
         # Buffers for target commands
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         self._processed_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._current_steer = torch.zeros(self.num_envs, 1, device=self.device)
 
         self._steer_targets = torch.zeros(self.num_envs, len(self._steer_joint_ids), device=self.device)
         self._left_wheel_targets = torch.zeros(self.num_envs, len(self._left_wheel_ids), device=self.device)
@@ -61,9 +62,12 @@ class LeatherbackDriveAction(ActionTerm):
         steer_action = self._processed_actions[:, 0:1]    # [-1.0, 1.0]
         throttle_action = self._processed_actions[:, 1:2] # [-1.0, 1.0]
 
-        # Steering angle target in radians
-        steer_rad = steer_action * self.cfg.max_steer_angle
-        self._steer_targets = steer_rad.repeat(1, len(self._steer_joint_ids))
+        # Steering angle target in radians with servo rate limiting to prevent high-frequency wiggling
+        target_steer = steer_action * self.cfg.max_steer_angle
+        max_delta = self.cfg.max_steer_rate * self._env.step_dt
+        steer_delta = torch.clamp(target_steer - self._current_steer, -max_delta, max_delta)
+        self._current_steer = self._current_steer + steer_delta
+        self._steer_targets = self._current_steer.repeat(1, len(self._steer_joint_ids))
 
         # Forward speed mapping: [-1, 1] -> [min_speed, max_speed]
         speed = 0.5 * (throttle_action + 1.0) * (self.cfg.max_speed - self.cfg.min_speed) + self.cfg.min_speed
@@ -84,9 +88,11 @@ class LeatherbackDriveAction(ActionTerm):
         if env_ids is None:
             self._raw_actions.zero_()
             self._processed_actions.zero_()
+            self._current_steer.zero_()
         else:
             self._raw_actions[env_ids] = 0.0
             self._processed_actions[env_ids] = 0.0
+            self._current_steer[env_ids] = 0.0
 
 
 @configclass
@@ -97,6 +103,9 @@ class LeatherbackDriveActionCfg(ActionTermCfg):
 
     max_steer_angle: float = 0.45
     """Maximum front knuckle steering angle in radians (default: ~25.8 deg)."""
+
+    max_steer_rate: float = 6.0
+    """Maximum steering slew rate in rad/s (~340 deg/s, eliminates servo jitter/wobble)."""
 
     max_speed: float = 2.5
     """Maximum driving speed in m/s (calibrated for stable 4-wheel ground contact without pitch-up)."""

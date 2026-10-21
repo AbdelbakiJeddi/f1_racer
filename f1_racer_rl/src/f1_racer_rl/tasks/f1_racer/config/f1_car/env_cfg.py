@@ -56,6 +56,11 @@ class F1RacerSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.GroundPlaneCfg(
             size=(500.0, 500.0),
             color=(0.12, 0.12, 0.12),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.0,
+                dynamic_friction=0.9,
+                restitution=0.0,
+            ),
         ),
     )
 

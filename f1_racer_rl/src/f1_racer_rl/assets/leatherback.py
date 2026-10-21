@@ -18,7 +18,7 @@ LEATHERBACK_CFG = ArticulationCfg(
             rigid_body_enabled=True,
             max_linear_velocity=20.0,
             max_angular_velocity=20.0,
-            max_depenetration_velocity=2.0,
+            max_depenetration_velocity=1.0,
             enable_gyroscopic_forces=True,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
@@ -47,14 +47,14 @@ LEATHERBACK_CFG = ArticulationCfg(
         "suspension": ImplicitActuatorCfg(
             joint_names_expr=["Shock__Rear_.*", "Shock__Front_.*"],
             stiffness=4000.0,
-            damping=200.0,
+            damping=300.0,
         ),
         "steering": ImplicitActuatorCfg(
             joint_names_expr=["Knuckle__Upright__Front_.*"],
-            effort_limit=50.0,
-            velocity_limit=15.0,
-            stiffness=3000.0,
-            damping=100.0,
+            effort_limit=6.0,
+            velocity_limit=8.0,
+            stiffness=600.0,
+            damping=40.0,
         ),
         "throttle": ImplicitActuatorCfg(
             joint_names_expr=["Wheel__.*"],
@@ -66,7 +66,7 @@ LEATHERBACK_CFG = ArticulationCfg(
         "linkages": ImplicitActuatorCfg(
             joint_names_expr=["(Chassis__.*|Upright__.*|Shock__Arm__.*)"],
             stiffness=0.0,
-            damping=0.5,
+            damping=5.0,
         ),
     },
 )

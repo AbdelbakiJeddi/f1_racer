@@ -19,7 +19,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         hidden_dims=[256, 128, 64],
         activation="elu",
         obs_normalization=False,
-        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.8),
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.4),
     )
     critic = RslRlMLPModelCfg(
         hidden_dims=[128, 64, 32],
