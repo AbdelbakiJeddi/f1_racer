@@ -12,14 +12,24 @@ Controls (active inside the 3D simulation window):
     R               : Reset car to track starting line
 """
 
+import argparse
 import math
 import sys
 import torch
 
 from isaaclab.app import AppLauncher
 
-# Launch Isaac Lab simulation with 3D window and cameras enabled
-app_launcher = AppLauncher(headless=False, enable_cameras=True)
+# Setup CLI argument parser with Isaac Lab launcher args
+parser = argparse.ArgumentParser(description="Manual drive smoke test for Leatherback F1 Racer.")
+AppLauncher.add_app_launcher_args(parser)
+args_cli = parser.parse_args()
+
+# Ensure 3D Kit GUI window opens by default
+if args_cli.visualizer is None:
+    args_cli.visualizer = "kit"
+
+# Launch Isaac Lab simulation with GUI and cameras enabled
+app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 import carb
@@ -167,3 +177,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
