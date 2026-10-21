@@ -221,10 +221,10 @@ class RewardsCfg:
         params={"margin_threshold": 0.45},
     )
 
-    # (5) Action smoothness: penalize large steering deflections
+    # (5) Action smoothness: penalize physical knuckle angular velocity (wheel shaking)
     steering_smoothness = RewTerm(
         func=mdp.steering_smoothness_penalty,
-        weight=-0.05,
+        weight=-0.15,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", joint_names=["Knuckle__Upright__Front_.*"]
@@ -232,7 +232,13 @@ class RewardsCfg:
         },
     )
 
-    # (6) Alive bonus: reward for surviving without crashing
+    # (6) Action rate: penalize rapid back-and-forth steering action jitter
+    steering_rate = RewTerm(
+        func=mdp.steering_rate_penalty,
+        weight=-0.25,
+    )
+
+    # (7) Alive bonus: reward for surviving without crashing
     alive = RewTerm(func=mdp.is_alive, weight=0.2)
 
 

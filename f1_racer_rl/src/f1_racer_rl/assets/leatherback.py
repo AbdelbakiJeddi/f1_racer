@@ -54,7 +54,7 @@ LEATHERBACK_CFG = ArticulationCfg(
             effort_limit=8.0,
             velocity_limit=10.0,
             stiffness=1200.0,
-            damping=60.0,
+            damping=80.0,
         ),
         "throttle": ImplicitActuatorCfg(
             joint_names_expr=["Wheel__.*"],

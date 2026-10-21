@@ -88,9 +88,16 @@ def boundary_violation_penalty(
 
 def steering_smoothness_penalty(
     env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["Steering_Knuckle_.*"]),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["Knuckle__Upright__Front_.*"]),
 ) -> torch.Tensor:
-    """Penalizes excessive steering angle magnitude to encourage smooth trajectories."""
+    """Penalizes physical knuckle angular velocity and angle magnitude to ensure smooth steering."""
     asset: Articulation = env.scene[asset_cfg.name]
-    steer = asset.data.joint_pos.torch[:, asset_cfg.joint_ids]
-    return torch.sum(torch.square(steer), dim=-1)
+    knuckle_vel = asset.data.joint_vel.torch[:, asset_cfg.joint_ids]
+    return torch.sum(torch.square(knuckle_vel), dim=-1)
+
+
+def steering_rate_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Penalizes high-frequency steering action changes between consecutive steps."""
+    action_term = env.action_manager.get_term("drive")
+    delta_steer = action_term.raw_actions[:, 0] - action_term.prev_raw_actions[:, 0]
+    return torch.square(delta_steer)
