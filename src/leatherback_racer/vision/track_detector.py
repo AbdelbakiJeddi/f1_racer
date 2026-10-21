@@ -34,6 +34,10 @@ class BatchedVisionTrackDetector(nn.Module):
         far_roi_range: Tuple[float, float] = (0.40, 0.45),
         yellow_threshold: float = 0.25,
         expected_track_width_px: float = 64.0,
+        near_half_width: float = 0.525,
+        far_half_width: float = 0.990,
+        longitudinal_delta_d: float = 0.532,
+        half_track_width: float = 0.550,
     ):
         """
         Args:
@@ -43,6 +47,10 @@ class BatchedVisionTrackDetector(nn.Module):
             far_roi_range: Fraction from top for far lookahead.
             yellow_threshold: Contrast threshold for line mask.
             expected_track_width_px: Approximate pixel distance between boundaries at near horizon.
+            near_half_width: Calibrated physical visible half-width (m) at Near ROI ground plane.
+            far_half_width: Calibrated physical visible half-width (m) at Far ROI ground plane.
+            longitudinal_delta_d: Physical longitudinal ground distance (m) between Near and Far ROIs.
+            half_track_width: Track corridor half-width (m) for normalizing lateral error.
         """
         super().__init__()
         self.img_h = img_h
@@ -51,6 +59,10 @@ class BatchedVisionTrackDetector(nn.Module):
         self.far_roi_range = far_roi_range
         self.yellow_threshold = yellow_threshold
         self.expected_track_width_px = expected_track_width_px
+        self.near_half_width = near_half_width
+        self.far_half_width = far_half_width
+        self.longitudinal_delta_d = longitudinal_delta_d
+        self.half_track_width = half_track_width
 
         # Normalized horizontal coordinate grid [-1.0, 1.0] across image width
         grid_x = torch.linspace(-1.0, 1.0, img_w)
@@ -178,20 +190,20 @@ class BatchedVisionTrackDetector(nn.Module):
         far_slice = mask[:, far_start:far_end, :]
 
         # 4. Find Centerlines at both horizons
-        x_near, conf_near = self._find_scanline_center(near_slice, expected_half_span=0.65)
-        x_far, conf_far = self._find_scanline_center(far_slice, expected_half_span=0.45, prev_estimate=x_near)
+        x_near, conf_near = self._find_scanline_center(near_slice, expected_half_span=0.75)
+        x_far, conf_far = self._find_scanline_center(far_slice, expected_half_span=0.55, prev_estimate=x_near)
 
-        # 5. Compute Geometric Errors
-        # Lateral error: displacement of track center relative to vehicle center (0.0)
-        e_lat = x_near  # (N, 1) in [-1.0, 1.0]
+        # 5. Compute Geometric Errors with perspective ground projection
+        # Physical lateral position in meters at near and far lookaheads
+        y_near_phys = x_near * self.near_half_width
+        y_far_phys = x_far * self.far_half_width
 
-        # Heading error: angle between near center and far center
-        delta_x = x_far - x_near
-        # Longitudinal pixel distance between the two lookaheads
-        delta_y = (near_start + near_end) / 2.0 - (far_start + far_end) / 2.0
-        normalized_dy = delta_y / H  # typically ~0.3
+        # Lateral error: normalized by half track width so [-1.0, 1.0] corresponds to corridor edges
+        e_lat = torch.clamp(y_near_phys / self.half_track_width, -1.0, 1.0)
 
-        e_heading = torch.atan2(delta_x, torch.full_like(delta_x, normalized_dy))
+        # Heading error: true physical angular deviation between near and far centers
+        delta_y_phys = y_far_phys - y_near_phys
+        e_heading = torch.atan2(delta_y_phys, torch.full_like(delta_y_phys, self.longitudinal_delta_d))
 
         # Overall confidence
         confidence = (conf_near + conf_far) * 0.5

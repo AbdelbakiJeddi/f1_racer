@@ -88,18 +88,21 @@ class F1RacerSceneCfg(InteractiveSceneCfg):
 
 
 
-    # Lighting: balanced dome ambient + distant sunlight
+    # Lighting: balanced dome ambient + angled distant sunlight to prevent camera glare
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.85, 0.9, 1.0), intensity=2500.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=600.0),
     )
 
     sun_light = AssetBaseCfg(
         prim_path="/World/SunLight",
         spawn=sim_utils.DistantLightCfg(
             color=(1.0, 0.98, 0.92),
-            intensity=3000.0,
+            intensity=1000.0,
             angle=0.53,
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            rot=(0.65328, 0.27060, 0.27060, 0.65328),
         ),
     )
 
