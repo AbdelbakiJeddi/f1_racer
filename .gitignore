@@ -85,6 +85,10 @@ Thumbs.db
 *.jpg
 *.jpeg
 
+# Documentation images
+!assets/
+!assets/*.png
+
 # USD files, scenes, and track data
 *.usd
 *.usda

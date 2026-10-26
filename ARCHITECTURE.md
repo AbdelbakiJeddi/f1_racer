@@ -8,12 +8,14 @@ This document outlines the reorganized, class-oriented architecture of the **Lea
 
 ```text
 f1_racer/
-├── README.md                      # Project overview, CLI commands & quickstart
+├── README.md                      # Project overview, setup & command reference
 ├── ARCHITECTURE.md                # System design and class hierarchy (this file)
+├── assets/                        # README screenshots
 ├── pyproject.toml                 # Package definition for 'leatherback-racer'
 │
 ├── src/leatherback_racer/         # Core Python library (Vision, Track, Control, Evaluation)
 │   ├── __init__.py                # Top-level class exports
+│   ├── paths.py                   # Project-root path helpers for runtime artifacts
 │   │
 │   ├── vision/                    # Perception & Visualization
 │   │   ├── __init__.py            # Exports: TrackDetector, TrackVisionHUD
@@ -40,11 +42,14 @@ f1_racer/
 │       └── procedural_track.py
 │
 ├── f1_racer_rl/                   # Isaac Lab Task Extension
+│   ├── README.md                  # Task package install/run notes
 │   ├── pyproject.toml             # Isaac Lab task extension registration
+│   ├── tests/                     # Registration smoke test
 │   └── src/f1_racer_rl/
 │       ├── assets/                # Asset descriptors and USD models
 │       │   ├── __init__.py        # F1_RACER_RL_ASSETS_DIR, LEATHERBACK_CFG
-│       │   └── leatherback.py     # Robot ArticulationCfg specification
+│       │   ├── leatherback.py     # Robot ArticulationCfg specification
+│       │   └── data/              # Leatherback USD, track USD/NPZ data
 │       │
 │       └── tasks/f1_racer/        # RL Environment and Task Logic
 │           ├── __init__.py
@@ -63,9 +68,7 @@ f1_racer/
 │               ├── events.py      # Class: CarEvents (reset pose onto track)
 │               └── track_oracle.py# Class: TrackOracle
 │
-└── scripts/                       # Clean, modular CLI entry points
-    ├── train.py                   # RSL-RL PPO Training
-    ├── play.py                    # Trained policy playback
+└── scripts/                       # Custom evaluation & teleop entry points
     ├── teleop_car.py              # Interactive keyboard driving (uses KeyboardTeleop)
     ├── test_single_lap.py         # Full lap evaluation on new procedural tracks (uses SingleLapEvaluator)
     └── test_vision_pipeline_live.py # Diagnostic vision verification (uses VisionPipelineTester)
@@ -117,3 +120,5 @@ f1_racer/
   - `reset_pose_on_track`: Places the car cleanly aligned at the start line or random track point with zero velocity.
 - **`LeatherbackDriveAction`**:
   - Maps continuous 2D policy outputs $[-1, 1]$ to knuckle steering angles and wheel angular velocities.
+- **`TrackOracle`**:
+  - Re-exported from `leatherback_racer.track`; `mdp/track_oracle.py` keeps the task-side import path stable.
