@@ -1,7 +1,7 @@
 """Test trained F1 Racer policy on a new unseen procedural track for a single full lap.
 
 Usage:
-    /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/test_single_lap.py --track_type organic --seed 123 --viz kit
+    python scripts/test_single_lap.py --track_type organic --seed 123 --viz kit
 
 Options:
     --track_type    : Track style: organic, wavy_circle, circuit (default: organic)
@@ -17,23 +17,36 @@ import argparse
 import math
 import os
 import shutil
-import time
+
 import cv2
 import numpy as np
 import torch
-
 from isaaclab.app import AppLauncher
 
 # 1. Parse CLI arguments BEFORE launching simulation
 parser = argparse.ArgumentParser(description="Single Lap Evaluation on New Track.")
-parser.add_argument("--track_type", type=str, default="organic", choices=["organic", "wavy_circle", "circuit"], help="Track type.")
+parser.add_argument(
+    "--track_type", type=str, default="organic", choices=["organic", "wavy_circle", "circuit"], help="Track type."
+)
 parser.add_argument("--seed", type=int, default=123, help="Procedural seed for track geometry.")
 parser.add_argument("--radius", type=float, default=13.0, help="Base radius of track in meters.")
 parser.add_argument("--amplitude", type=float, default=2.2, help="Amplitude of curves in meters.")
 parser.add_argument("--checkpoint", type=str, default="latest", help="Path to checkpoint .pt or 'latest'.")
-parser.add_argument("--chase_cam", action="store_true", default=False, help="Lock camera in 3rd-person chase mode behind the car (default: False, camera is free).")
-parser.add_argument("--show_vision", action="store_true", default=True, help="Display live real-time HUD window with onboard camera and detected centerline (default: True).")
-parser.add_argument("--no_show_vision", dest="show_vision", action="store_false", help="Disable the live vision HUD window.")
+parser.add_argument(
+    "--chase_cam",
+    action="store_true",
+    default=False,
+    help="Lock camera in 3rd-person chase mode behind the car (default: False, camera is free).",
+)
+parser.add_argument(
+    "--show_vision",
+    action="store_true",
+    default=True,
+    help="Display live real-time HUD window with onboard camera and detected centerline (default: True).",
+)
+parser.add_argument(
+    "--no_show_vision", dest="show_vision", action="store_false", help="Disable the live vision HUD window."
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -45,12 +58,12 @@ launcher = AppLauncher(args_cli)
 simulation_app = launcher.app
 
 # 2. Imports after Kit startup
-import gymnasium as gym
-
 import f1_racer_rl.tasks  # noqa: F401
+import gymnasium as gym
 from f1_racer_rl.assets import F1_RACER_RL_ASSETS_DIR
 from f1_racer_rl.tasks.f1_racer.config.f1_car.env_cfg import F1RacerEnvCfg
 from isaaclab.utils.math import euler_xyz_from_quat
+
 from leatherback_racer.evaluation import CheckpointLoader, SingleLapEvaluator
 from leatherback_racer.track import TrackOracle
 from leatherback_racer.vision import BatchedVisionTrackDetector, TrackVisionHUD
@@ -96,13 +109,21 @@ def main():
     env_cfg.viewer.eye = (float(cam_start_x), float(cam_start_y), 2.5)
     env_cfg.viewer.lookat = (float(start_pos_2d[0]), float(start_pos_2d[1]), 0.1)
 
-    print(f"\n[Environment] Spawning Leatherback at start line: ({start_pos_2d[0]:.2f}, {start_pos_2d[1]:.2f}) heading: {math.degrees(start_yaw):+.1f}°")
+    print(
+        f"\n[Environment] Spawning Leatherback at start line: "
+        f"({start_pos_2d[0]:.2f}, {start_pos_2d[1]:.2f}) "
+        f"heading: {math.degrees(start_yaw):+.1f}°"
+    )
 
     env = gym.make("F1RacerRl-F1-Racer-F1-Car", cfg=env_cfg)
     device = env.unwrapped.device
     robot = env.unwrapped.scene["robot"]
     camera = env.unwrapped.scene["camera"]
-    steer_fl_idx = robot.data.joint_names.index("Knuckle__Upright__Front_Left") if "Knuckle__Upright__Front_Left" in robot.data.joint_names else 0
+    steer_fl_idx = (
+        robot.data.joint_names.index("Knuckle__Upright__Front_Left")
+        if "Knuckle__Upright__Front_Left" in robot.data.joint_names
+        else 0
+    )
 
     # Initialize Computer Vision Detector & Live HUD
     detector = BatchedVisionTrackDetector(img_h=128, img_w=128).to(device)
@@ -187,7 +208,7 @@ def main():
                 cam_z = root_pos[2] + cam_height
                 env.unwrapped.sim.set_camera_view(
                     eye=[float(cam_x), float(cam_y), float(cam_z)],
-                    target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)]
+                    target=[float(root_pos[0]), float(root_pos[1]), float(root_pos[2] + 0.1)],
                 )
 
             # Live HUD
@@ -209,7 +230,7 @@ def main():
                     f"[{elapsed_s:5.1f}s | Step {step_count:04d}] "
                     f"Progress: {progress_pct:5.1f}% (idx {closest_idx:03d}/{total_waypoints}) | "
                     f"Speed: {speed_kmh:4.1f} km/h ({speed_ms:4.2f} m/s) | "
-                    f"Lat Err: {lat_err*100:4.1f} cm | "
+                    f"Lat Err: {lat_err * 100:4.1f} cm | "
                     f"Heading Err: {math.degrees(head_err):4.1f}°"
                 )
 
@@ -219,8 +240,9 @@ def main():
                 print("\n⚠️ Environment triggered termination or truncation before lap finished!")
                 break
 
-    except Exception as e:
+    except Exception:
         import traceback
+
         print("\n❌ EXCEPTION CAUGHT IN MAIN LOOP:")
         traceback.print_exc()
 
@@ -238,13 +260,16 @@ def main():
         if lap_completed:
             print("  STATUS          : ✅ SINGLE LAP SUCCESSFULLY COMPLETED!")
         else:
-            print(f"  STATUS          : ⚠️ INCOMPLETE (Max Progress Reached: {max_idx_reached/total_waypoints*100:.1f}%)")
+            print(
+                f"  STATUS          : ⚠️ INCOMPLETE "
+                f"(Max Progress Reached: {max_idx_reached / total_waypoints * 100:.1f}%)"
+            )
 
         print(f"  Track Style     : {args_cli.track_type.upper()} (Seed: {args_cli.seed})")
         print(f"  Lap Time        : {total_time_s:.2f} seconds ({step_count} control steps)")
         print(f"  Average Speed   : {avg_speed_ms * 3.6:.1f} km/h ({avg_speed_ms:.2f} m/s)")
         print(f"  Max Speed       : {max_speed_kmh:.1f} km/h")
-        print(f"  Mean Lat Error  : {mean_lat_cm:.1f} cm (Lane half-width: {oracle.track_width/2.0*100:.0f} cm)")
+        print(f"  Mean Lat Error  : {mean_lat_cm:.1f} cm (Lane half-width: {oracle.track_width / 2.0 * 100:.0f} cm)")
         print(f"  Max Lat Error   : {max_lat_cm:.1f} cm")
         print(f"  Lane Keeping    : {lane_keeping_pct:.1f}% on-track accuracy")
         print("=" * 80 + "\n")

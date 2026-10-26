@@ -7,10 +7,9 @@ heading error, tangents, and normals.
 from __future__ import annotations
 
 import os
-from typing import Optional, Dict, Any
+
 import numpy as np
 import torch
-
 from isaaclab.utils.math import wrap_to_pi
 
 
@@ -19,6 +18,7 @@ def get_default_track_npz_path() -> str:
     # Look in f1_racer_rl assets
     try:
         from f1_racer_rl.assets import F1_RACER_RL_ASSETS_DIR
+
         npz_path = str(F1_RACER_RL_ASSETS_DIR / "track_data.npz")
         if os.path.exists(npz_path):
             return npz_path
@@ -38,14 +38,14 @@ def get_default_track_npz_path() -> str:
 
 class TrackOracle:
     """Pre-loaded GPU cache of mathematical track geometry for batched error computations.
-    
+
     Provides analytical ground-truth track queries used by privileged Critics,
     reward engines, and reset event terms.
     """
 
-    _instance: Optional[TrackOracle] = None
+    _instance: TrackOracle | None = None
 
-    def __init__(self, npz_path: Optional[str] = None, device: str = "cuda"):
+    def __init__(self, npz_path: str | None = None, device: str = "cuda"):
         if npz_path is None:
             npz_path = get_default_track_npz_path()
 
@@ -57,9 +57,9 @@ class TrackOracle:
 
         # Load arrays to torch tensor on target device
         self.centerline = torch.tensor(data["centerline"], dtype=torch.float32, device=self.device)  # (M, 2)
-        self.tangents = torch.tensor(data["tangents"], dtype=torch.float32, device=self.device)      # (M, 2)
-        self.normals = torch.tensor(data["normals"], dtype=torch.float32, device=self.device)        # (M, 2)
-        self.left_line = torch.tensor(data["left_line"], dtype=torch.float32, device=self.device)    # (M, 2)
+        self.tangents = torch.tensor(data["tangents"], dtype=torch.float32, device=self.device)  # (M, 2)
+        self.normals = torch.tensor(data["normals"], dtype=torch.float32, device=self.device)  # (M, 2)
+        self.left_line = torch.tensor(data["left_line"], dtype=torch.float32, device=self.device)  # (M, 2)
         self.right_line = torch.tensor(data["right_line"], dtype=torch.float32, device=self.device)  # (M, 2)
         self.track_width = float(data["track_width"])
         self.is_closed = bool(data["is_closed"])
@@ -69,7 +69,7 @@ class TrackOracle:
         self.tangent_yaws = torch.atan2(self.tangents[:, 1], self.tangents[:, 0])  # (M,)
 
     @classmethod
-    def get_instance(cls, device: str = "cuda", npz_path: Optional[str] = None) -> TrackOracle:
+    def get_instance(cls, device: str = "cuda", npz_path: str | None = None) -> TrackOracle:
         """Singleton accessor for TrackOracle."""
         target_device_type = "cuda" if (torch.cuda.is_available() and "cuda" in device) else "cpu"
         if cls._instance is None or cls._instance.device.type != target_device_type:
@@ -81,7 +81,7 @@ class TrackOracle:
         """Resets the singleton instance (useful when track changes dynamically)."""
         cls._instance = None
 
-    def query(self, pos_xy: torch.Tensor, yaw: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def query(self, pos_xy: torch.Tensor, yaw: torch.Tensor) -> dict[str, torch.Tensor]:
         """Vectorized computation of vehicle errors relative to the track.
 
         Args:
@@ -104,21 +104,21 @@ class TrackOracle:
 
         # Pairwise distance to all centerline points: (N, 1, 2) - (1, M, 2) -> (N, M, 2)
         diff = pos_xy.unsqueeze(1) - self.centerline.unsqueeze(0)
-        dists_sq = torch.sum(diff ** 2, dim=-1)  # (N, M)
+        dists_sq = torch.sum(diff**2, dim=-1)  # (N, M)
         closest_idx = torch.argmin(dists_sq, dim=-1)  # (N,)
 
         # Gather closest reference geometry
-        c_pt = self.centerline[closest_idx]      # (N, 2)
-        c_tan = self.tangents[closest_idx]        # (N, 2)
-        c_norm = self.normals[closest_idx]        # (N, 2)
-        c_yaw = self.tangent_yaws[closest_idx]    # (N,)
+        c_pt = self.centerline[closest_idx]  # (N, 2)
+        c_tan = self.tangents[closest_idx]  # (N, 2)
+        c_norm = self.normals[closest_idx]  # (N, 2)
+        c_yaw = self.tangent_yaws[closest_idx]  # (N,)
 
         # Lateral error: displacement vector projected onto track normal
-        disp = pos_xy - c_pt                      # (N, 2)
+        disp = pos_xy - c_pt  # (N, 2)
         lat_error = torch.sum(disp * c_norm, dim=-1, keepdim=True)  # (N, 1)
 
         # Heading error: vehicle yaw minus track tangent direction wrapped to [-pi, pi]
-        heading_error = wrap_to_pi(yaw - c_yaw).unsqueeze(-1)       # (N, 1)
+        heading_error = wrap_to_pi(yaw - c_yaw).unsqueeze(-1)  # (N, 1)
 
         return {
             "lateral_error": lat_error,

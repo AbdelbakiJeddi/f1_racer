@@ -5,6 +5,8 @@
 
 """Environment configuration for the Leatherback F1 racing car task."""
 
+from isaaclab_visualizers.kit import KitVisualizerCfg
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -16,14 +18,15 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.physics import PhysxAutoCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import CameraCfg, TiledCameraCfg
+from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab_ov.physics import OvPhysxCfg
 from isaaclab_physx.physics import PhysxCfg
+
 from isaaclab_tasks.utils import PresetCfg
-from isaaclab_visualizers.kit import KitVisualizerCfg
 
 from f1_racer_rl.assets import F1_RACER_RL_ASSETS_DIR, LEATHERBACK_CFG
+
 from ... import mdp
 
 ##
@@ -91,8 +94,6 @@ class F1RacerSceneCfg(InteractiveSceneCfg):
         update_period=0.0,
     )
 
-
-
     # Lighting: balanced dome ambient + angled distant sunlight to prevent camera glare
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
@@ -142,9 +143,7 @@ class ObservationsCfg:
             func=mdp.CarObservations.vision_track_state,
             params={
                 "sensor_cfg": SceneEntityCfg("camera"),
-                "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=["Knuckle__Upright__Front_.*"]
-                ),
+                "asset_cfg": SceneEntityCfg("robot", joint_names=["Knuckle__Upright__Front_.*"]),
             },
         )
 
@@ -158,11 +157,7 @@ class ObservationsCfg:
 
         privileged_state = ObsTerm(
             func=mdp.CarObservations.privileged_track_state,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=["Knuckle__Upright__Front_.*"]
-                )
-            },
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=["Knuckle__Upright__Front_.*"])},
         )
 
         def __post_init__(self) -> None:
@@ -225,11 +220,7 @@ class RewardsCfg:
     steering_smoothness = RewTerm(
         func=mdp.CarRewards.steering_smoothness,
         weight=-0.15,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=["Knuckle__Upright__Front_.*"]
-            )
-        },
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["Knuckle__Upright__Front_.*"])},
     )
 
     # (6) Action rate: penalize rapid back-and-forth steering action jitter
@@ -254,7 +245,6 @@ class TerminationsCfg:
 
     # (3) Vehicle rollover or flip
     rollover = DoneTerm(func=mdp.CarTerminations.rollover, params={"max_tilt_rad": 0.785})
-
 
 
 ##

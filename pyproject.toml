@@ -8,8 +8,40 @@ version = "0.1.0"
 description = "Vision-based RL racer package for Leatherback robot in Isaac Sim / Isaac Lab"
 authors = [{ name = "AbdelbakiJeddi" }]
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = []
+license = { file = "LICENSE" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "pillow",
+    "scipy",
+    "torch",
+    "torchvision",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["leatherback_racer"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401", "F403"]
+"scripts/**/*.py" = ["E402"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pyright]
+include = ["src", "scripts"]
+exclude = ["**/__pycache__", ".git", ".venv", "f1_racer_rl"]
+
+[tool.codespell]
+skip = "*.usd,*.usda,*.usdc,*.json,*.onnx,*.pt,*.mp4,*.data,uv.lock,logs"

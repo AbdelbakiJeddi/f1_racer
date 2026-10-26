@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
 import torch
 
 from isaaclab.managers.action_manager import ActionTerm, ActionTermCfg
@@ -70,8 +71,8 @@ class LeatherbackDriveAction(ActionTerm):
         self._raw_actions[:] = actions
         self._processed_actions = torch.clamp(actions, -1.0, 1.0)
 
-        steer_action = self._processed_actions[:, 0:1]    # [-1.0, 1.0]
-        throttle_action = self._processed_actions[:, 1:2] # [-1.0, 1.0]
+        steer_action = self._processed_actions[:, 0:1]  # [-1.0, 1.0]
+        throttle_action = self._processed_actions[:, 1:2]  # [-1.0, 1.0]
 
         # Steering angle target in radians with servo rate limiting and EMA low-pass filtering
         target_steer = steer_action * self.cfg.max_steer_angle + self.cfg.steer_trim

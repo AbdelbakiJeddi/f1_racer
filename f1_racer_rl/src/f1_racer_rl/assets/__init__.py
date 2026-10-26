@@ -11,4 +11,3 @@ F1_RACER_RL_ASSETS_DIR = Path(__file__).resolve().parent / "data"
 """Path to project-owned asset data."""
 
 from .leatherback import LEATHERBACK_CFG
-

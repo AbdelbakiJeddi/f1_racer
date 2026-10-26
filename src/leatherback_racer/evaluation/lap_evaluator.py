@@ -3,24 +3,19 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 import os
 import shutil
-import time
-from typing import Optional, Tuple, Any
 
 import numpy as np
-import torch
-import torch.nn as nn
 
-from ..track import ProceduralTrack, TrackConfig, TrackOracle
-from ..vision import BatchedVisionTrackDetector, TrackVisionHUD
-from .checkpoint import CheckpointLoader
+from ..paths import resolve_project_path
+from ..track import ProceduralTrack, TrackConfig
 
 
 @dataclasses.dataclass
 class LapMetrics:
     """Performance telemetry gathered during a full lap evaluation."""
+
     lap_time_s: float = 0.0
     lap_length_m: float = 0.0
     lap_completed: bool = False
@@ -60,14 +55,14 @@ class SingleLapEvaluator:
         radius: float = 13.0,
         amplitude: float = 2.2,
         out_dir: str = "outputs/eval_track",
-    ) -> Tuple[str, str, ProceduralTrack]:
+    ) -> tuple[str, str, ProceduralTrack]:
         """Generates a procedural track USD mesh and NPZ metadata.
-        
+
         Also synchronizes the generated track into active project assets.
         """
         from pxr import Usd, UsdGeom
 
-        out_path = os.path.abspath(out_dir)
+        out_path = str(resolve_project_path(out_dir))
         os.makedirs(out_path, exist_ok=True)
         usd_path = os.path.join(out_path, f"track_{track_type}_{seed}.usd")
         npz_path = os.path.join(out_path, f"track_{track_type}_{seed}_data.npz")
@@ -108,6 +103,7 @@ class SingleLapEvaluator:
         # Synchronize into assets/data
         try:
             from f1_racer_rl.assets import F1_RACER_RL_ASSETS_DIR
+
             target_usd = str(F1_RACER_RL_ASSETS_DIR / "track.usd")
             target_npz = str(F1_RACER_RL_ASSETS_DIR / "track_data.npz")
             shutil.copyfile(usd_path, target_usd)
@@ -115,7 +111,10 @@ class SingleLapEvaluator:
         except Exception as e:
             print(f"[Warning] Could not sync to F1_RACER_RL_ASSETS_DIR: {e}")
 
-        total_len = float(np.sum(np.linalg.norm(np.diff(track.centerline, axis=0), axis=1)) + np.linalg.norm(track.centerline[0] - track.centerline[-1]))
+        total_len = float(
+            np.sum(np.linalg.norm(np.diff(track.centerline, axis=0), axis=1))
+            + np.linalg.norm(track.centerline[0] - track.centerline[-1])
+        )
         print(f"\n[Track Generation] Created new '{track_type}' track (seed={seed}):")
         print(f"  • Total Lap Length: {total_len:.1f} meters")
         print(f"  • Centerline Waypoints: {track.centerline.shape[0]} points")

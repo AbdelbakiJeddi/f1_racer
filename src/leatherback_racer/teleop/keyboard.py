@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Tuple, Set, Optional
-
 
 class KeyboardTeleop:
     """Listens to Omniverse window keyboard events for manual vehicle driving."""
@@ -16,11 +14,11 @@ class KeyboardTeleop:
         self._input = carb.input.acquire_input_interface()
         self._keyboard = self._appwindow.get_keyboard()
 
-        self.steer_cmd: float = 0.0      # [-1.0, 1.0]
+        self.steer_cmd: float = 0.0  # [-1.0, 1.0]
         self.throttle_cmd: float = -1.0  # [-1.0, 1.0] (-1.0 is stopped / 0 speed)
         self.reset_requested: bool = False
 
-        self._keys_pressed: Set[str] = set()
+        self._keys_pressed: set[str] = set()
         self._sub = self._input.subscribe_to_keyboard_events(self._keyboard, self._on_key_event)
 
     def _on_key_event(self, event, *args, **kwargs) -> bool:
@@ -35,7 +33,7 @@ class KeyboardTeleop:
             self._keys_pressed.discard(key)
         return True
 
-    def update(self) -> Tuple[float, float, bool]:
+    def update(self) -> tuple[float, float, bool]:
         """Returns (steer [-1, 1], throttle [-1, 1], reset_requested)."""
         # Steering input
         steer_target = 0.0

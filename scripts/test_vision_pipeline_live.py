@@ -14,7 +14,7 @@ import argparse
 import math
 import os
 import sys
-import numpy as np
+
 import torch
 
 # 1. Parse arguments BEFORE AppLauncher
@@ -31,11 +31,12 @@ from isaaclab.app import AppLauncher
 app_launcher = AppLauncher(headless=args.headless, enable_cameras=True)
 simulation_app = app_launcher.app
 
-import gymnasium as gym
 import f1_racer_rl.tasks  # noqa: F401
+import gymnasium as gym
 from f1_racer_rl.tasks.f1_racer.config.f1_car.env_cfg import F1RacerEnvCfg
 from f1_racer_rl.tasks.f1_racer.mdp.track_oracle import TrackOracle
 from isaaclab.utils.math import euler_xyz_from_quat
+
 from leatherback_racer.evaluation import VisionPipelineTester
 from leatherback_racer.vision import BatchedVisionTrackDetector
 
@@ -70,7 +71,9 @@ def main() -> bool:
     print(f"  • Policy observation shape: {tuple(policy_obs.shape)} (dtype: {policy_obs.dtype})")
     print(f"  • Critic observation shape: {tuple(critic_obs.shape)} (dtype: {critic_obs.dtype})")
 
-    assert policy_obs.shape[-1] == 7, f"Expected 7D policy obs [e_lat, e_head, conf, vx, vy, wz, steer], got {policy_obs.shape[-1]}!"
+    assert policy_obs.shape[-1] == 7, (
+        f"Expected 7D policy obs [e_lat, e_head, conf, vx, vy, wz, steer], got {policy_obs.shape[-1]}!"
+    )
     assert critic_obs.shape[-1] == 8, f"Expected 8D privileged critic obs, got {critic_obs.shape[-1]}!"
     print("  ✅ PASS: Policy obs is 7D vision-kinematic state; Critic is 8D privileged state.")
 
@@ -111,26 +114,28 @@ def main() -> bool:
             print(
                 f"  Step {step:02d} | Speed: {vx:.2f} m/s | "
                 f"Vision e_lat: {vis_lat:+.3f} (GT: {gt_norm_lat:+.3f}) | "
-                f"Vision e_head: {vis_head:+.3f} rad ({vis_head*180/math.pi:+.1f}°) | "
+                f"Vision e_head: {vis_head:+.3f} rad ({vis_head * 180 / math.pi:+.1f}°) | "
                 f"Conf: {vis_conf:.2f}"
             )
 
         if step in [5, 15, 25, args.steps - 1]:
             raw_rgb = camera.data.output["rgb"]
             features, mask = detector(raw_rgb)
-            recorded_frames.append({
-                "step": step,
-                "rgb": raw_rgb[0].detach().cpu(),
-                "mask": mask[0].detach().cpu(),
-                "vis_lat": vis_lat,
-                "vis_head": vis_head,
-                "vis_conf": vis_conf,
-                "gt_lat": gt_lat,
-                "gt_norm_lat": gt_norm_lat,
-                "gt_head": gt_head,
-                "vx": vx,
-                "steer": steer_val,
-            })
+            recorded_frames.append(
+                {
+                    "step": step,
+                    "rgb": raw_rgb[0].detach().cpu(),
+                    "mask": mask[0].detach().cpu(),
+                    "vis_lat": vis_lat,
+                    "vis_head": vis_head,
+                    "vis_conf": vis_conf,
+                    "gt_lat": gt_lat,
+                    "gt_norm_lat": gt_norm_lat,
+                    "gt_head": gt_head,
+                    "vx": vx,
+                    "steer": steer_val,
+                }
+            )
 
     # D. Build High-Resolution Diagnostic Dashboard using VisionPipelineTester class
     print("\n[5] Building comprehensive multi-panel diagnostic visualization...")

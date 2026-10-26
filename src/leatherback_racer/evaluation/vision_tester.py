@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 import os
-from typing import Dict, Any, List
+from typing import Any
+
 import numpy as np
-import torch
 from PIL import Image, ImageDraw
 
-from ..track import TrackOracle
+from ..paths import resolve_project_path
 from ..vision import BatchedVisionTrackDetector
 
 
@@ -18,7 +18,7 @@ class VisionPipelineTester:
 
     @staticmethod
     def render_diagnostic_dashboard(
-        latest: Dict[str, Any],
+        latest: dict[str, Any],
         detector: BatchedVisionTrackDetector,
         output_path: str = "outputs/vision_pipeline_dashboard.png",
     ) -> str:
@@ -30,13 +30,11 @@ class VisionPipelineTester:
         3. Near & Far Horizon Scanline Mass Profiles.
         4. Vision vs. Ground-Truth Telemetry Comparison HUD.
         """
-        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        output_path = str(resolve_project_path(output_path))
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         rgb_raw = latest["rgb"].numpy()
-        if rgb_raw.shape[-1] in (3, 4):
-            rgb_disp = rgb_raw[:, :, :3]
-        else:
-            rgb_disp = np.transpose(rgb_raw[:3], (1, 2, 0))
+        rgb_disp = rgb_raw[:, :, :3] if rgb_raw.shape[-1] in (3, 4) else np.transpose(rgb_raw[:3], (1, 2, 0))
 
         if rgb_disp.dtype != np.uint8:
             rgb_disp = np.clip(rgb_disp * 255.0 if rgb_disp.max() <= 1.0 else rgb_disp, 0, 255).astype(np.uint8)
@@ -79,7 +77,9 @@ class VisionPipelineTester:
         far_mid_y = (far_y1 + far_y2) // 2
 
         draw_raw.line([(detected_cx_near, near_mid_y), (detected_cx_far, far_mid_y)], fill=(255, 255, 0), width=2)
-        draw_raw.line([(detected_cx_near, near_mid_y - 10), (detected_cx_near, near_mid_y + 10)], fill=(50, 255, 50), width=3)
+        draw_raw.line(
+            [(detected_cx_near, near_mid_y - 10), (detected_cx_near, near_mid_y + 10)], fill=(50, 255, 50), width=3
+        )
         draw_raw.line([(cam_mid, near_mid_y), (detected_cx_near, near_mid_y)], fill=(50, 255, 50), width=2)
         draw_raw.line([(detected_cx_far, far_mid_y - 8), (detected_cx_far, far_mid_y + 8)], fill=(255, 128, 0), width=3)
 
@@ -88,15 +88,19 @@ class VisionPipelineTester:
         draw_mask = ImageDraw.Draw(pil_mask)
         draw_mask.text((5, 5), "Yellow Line Segment Mask", fill=(255, 255, 0))
         draw_mask.line([(detected_cx_near, near_mid_y), (detected_cx_far, far_mid_y)], fill=(255, 255, 0), width=2)
-        draw_mask.line([(detected_cx_near, near_mid_y - 10), (detected_cx_near, near_mid_y + 10)], fill=(50, 255, 50), width=3)
-        draw_mask.line([(detected_cx_far, far_mid_y - 8), (detected_cx_far, far_mid_y + 8)], fill=(255, 128, 0), width=3)
+        draw_mask.line(
+            [(detected_cx_near, near_mid_y - 10), (detected_cx_near, near_mid_y + 10)], fill=(50, 255, 50), width=3
+        )
+        draw_mask.line(
+            [(detected_cx_far, far_mid_y - 8), (detected_cx_far, far_mid_y + 8)], fill=(255, 128, 0), width=3
+        )
 
         # 3. Panel C: Scanline Profiles
         profile_img = Image.new("RGB", (upscale, upscale), (15, 18, 24))
         draw_prof = ImageDraw.Draw(profile_img)
 
-        near_prof = mask_raw[int(H * 0.46):int(H * 0.52), :].mean(axis=0)
-        far_prof = mask_raw[int(H * 0.40):int(H * 0.45), :].mean(axis=0)
+        near_prof = mask_raw[int(H * 0.46) : int(H * 0.52), :].mean(axis=0)
+        far_prof = mask_raw[int(H * 0.40) : int(H * 0.45), :].mean(axis=0)
 
         draw_prof.line([(upscale // 2, 20), (upscale // 2, upscale - 20)], fill=(60, 60, 70), width=1)
         draw_prof.text((5, 5), "Scanline Intensity Profile", fill=(220, 220, 220))
@@ -137,8 +141,8 @@ class VisionPipelineTester:
             ("Detection Confidence", f"{latest['vis_conf']:.1%}"),
             ("Vision e_lat (norm)", f"{latest['vis_lat']:+.3f}"),
             ("Oracle e_lat (norm)", f"{latest['gt_norm_lat']:+.3f}"),
-            ("Vision e_heading", f"{latest['vis_head']*180/math.pi:+.1f} deg ({latest['vis_head']:+.3f} rad)"),
-            ("Oracle e_heading", f"{latest['gt_head']*180/math.pi:+.1f} deg ({latest['gt_head']:+.3f} rad)"),
+            ("Vision e_heading", f"{latest['vis_head'] * 180 / math.pi:+.1f} deg ({latest['vis_head']:+.3f} rad)"),
+            ("Oracle e_heading", f"{latest['gt_head'] * 180 / math.pi:+.1f} deg ({latest['gt_head']:+.3f} rad)"),
         ]
 
         for label, val in telemetry_items:
@@ -157,7 +161,9 @@ class VisionPipelineTester:
         canvas.paste(hud_img, (upscale * 3 + 40, 50))
 
         draw_canvas = ImageDraw.Draw(canvas)
-        draw_canvas.text((15, 15), "LEATHERBACK F1 RACER :: ONBOARD COMPUTER VISION DIAGNOSTIC PIPELINE", fill=(255, 255, 255))
+        draw_canvas.text(
+            (15, 15), "LEATHERBACK F1 RACER :: ONBOARD COMPUTER VISION DIAGNOSTIC PIPELINE", fill=(255, 255, 255)
+        )
         draw_canvas.text((10, 32), "1. Camera View + Dual ROIs", fill=(0, 255, 255))
         draw_canvas.text((upscale + 20, 32), "2. PyTorch Yellow Segment", fill=(255, 255, 0))
         draw_canvas.text((upscale * 2 + 30, 32), "3. Scanline Mass Profile", fill=(200, 200, 200))

@@ -1,7 +1,7 @@
 """Vision-based perception and visualization modules."""
 
-from .track_detector import BatchedVisionTrackDetector, TrackDetector
 from .hud_visualizer import TrackVisionHUD
+from .track_detector import BatchedVisionTrackDetector, TrackDetector
 
 __all__ = [
     "BatchedVisionTrackDetector",

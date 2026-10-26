@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
 import torch
+from leatherback_racer.track import TrackOracle
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import euler_xyz_from_quat
-from leatherback_racer.track import TrackOracle
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation

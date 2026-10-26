@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import glob
 import os
-from typing import Optional
+
 import torch
 import torch.nn as nn
+
+from ..paths import resolve_project_path
 
 
 class CheckpointLoader:
@@ -15,13 +17,20 @@ class CheckpointLoader:
     @staticmethod
     def find_latest(log_dir: str = "logs/rsl_rl/f1_racer_leatherback") -> str:
         """Finds the most recent model_*.pt checkpoint in the given directory tree."""
+        log_dir = str(resolve_project_path(log_dir))
         pattern = os.path.join(log_dir, "*", "*.pt")
         ckpts = glob.glob(pattern)
         if not ckpts:
             # Also check direct child pt files
             ckpts = glob.glob(os.path.join(log_dir, "*.pt"))
         if not ckpts:
-            raise FileNotFoundError(f"No trained checkpoints found matching: {pattern}")
+            raise FileNotFoundError(
+                f"No trained checkpoints found matching: {pattern}\n"
+                "Train a policy first (e.g. `uv run isaaclab train --rl_library rsl_rl "
+                "--task F1RacerRl-F1-Racer-F1-Car` from `f1_racer_rl/`), or "
+                "download a released checkpoint into "
+                f"'{log_dir}/<run_name>/', then pass its path with `--checkpoint`."
+            )
         ckpts.sort(key=os.path.getmtime, reverse=True)
         return ckpts[0]
 
@@ -66,5 +75,7 @@ class CheckpointLoader:
         mlp_dict = {k[4:]: v for k, v in state_dict.items() if k.startswith("mlp.")}
         mlp.load_state_dict(mlp_dict)
         mlp.eval()
-        print(f"  ✅ Actor MLP ({input_dim} -> {' -> '.join(map(str, hidden_dims))} -> {action_dim}) loaded successfully.")
+        print(
+            f"  ✅ Actor MLP ({input_dim} -> {' -> '.join(map(str, hidden_dims))} -> {action_dim}) loaded successfully."
+        )
         return mlp

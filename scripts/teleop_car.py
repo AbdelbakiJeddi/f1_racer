@@ -1,7 +1,7 @@
 """Interactive manual keyboard teleoperation for the F1 Leatherback car in Isaac Lab.
 
 Usage:
-    /home/abok-omen/IsaacLab-3.0/env_isaaclab/bin/python scripts/teleop_car.py
+    python scripts/teleop_car.py
 
 Controls (active inside the 3D simulation window):
     W / UP          : Throttle Forward (accelerate smoothly)
@@ -16,15 +16,24 @@ from __future__ import annotations
 
 import argparse
 import math
-import sys
-import torch
 
+import torch
 from isaaclab.app import AppLauncher
 
 # 1. Setup CLI argument parser with Isaac Lab launcher args
 parser = argparse.ArgumentParser(description="Manual drive smoke test for Leatherback F1 Racer.")
-parser.add_argument("--chase_cam", action="store_true", default=False, help="Lock camera in 3rd-person chase mode behind the car (default: False, camera is free).")
-parser.add_argument("--show_vision", action="store_true", default=True, help="Display live real-time HUD window with onboard camera and detected centerline (default: True).")
+parser.add_argument(
+    "--chase_cam",
+    action="store_true",
+    default=False,
+    help="Lock camera in 3rd-person chase mode behind the car (default: False, camera is free).",
+)
+parser.add_argument(
+    "--show_vision",
+    action="store_true",
+    default=True,
+    help="Display live real-time HUD window with onboard camera and detected centerline (default: True).",
+)
 parser.add_argument("--no_show_vision", dest="show_vision", action="store_false", help="Disable vision HUD window.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -37,11 +46,11 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 # 3. Post-launch imports
-import gymnasium as gym
-
 import f1_racer_rl.tasks  # noqa: F401
+import gymnasium as gym
 from f1_racer_rl.tasks.f1_racer.config.f1_car.env_cfg import F1RacerEnvCfg
 from isaaclab.utils.math import euler_xyz_from_quat
+
 from leatherback_racer.teleop import KeyboardTeleop
 from leatherback_racer.vision import BatchedVisionTrackDetector, TrackVisionHUD
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
 import torch
+from leatherback_racer.track import TrackOracle
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_from_euler_xyz
-from leatherback_racer.track import TrackOracle
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
@@ -47,9 +48,9 @@ class CarEvents:
             idx = torch.zeros(num_resets, dtype=torch.long, device=asset.device)
 
         # Reference centerline position and normal
-        c_pt = oracle.centerline[idx]    # (num_resets, 2)
-        c_norm = oracle.normals[idx]     # (num_resets, 2)
-        c_yaw = oracle.tangent_yaws[idx] # (num_resets,)
+        c_pt = oracle.centerline[idx]  # (num_resets, 2)
+        c_norm = oracle.normals[idx]  # (num_resets, 2)
+        c_yaw = oracle.tangent_yaws[idx]  # (num_resets,)
 
         # Lateral offset along normal vector
         if lateral_range > 0.0:

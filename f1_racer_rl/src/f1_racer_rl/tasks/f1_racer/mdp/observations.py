@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
+
 import torch
+from leatherback_racer.track import TrackOracle
+from leatherback_racer.vision import BatchedVisionTrackDetector
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import euler_xyz_from_quat
-from leatherback_racer.track import TrackOracle
-from leatherback_racer.vision import BatchedVisionTrackDetector
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 class CarObservations:
     """Encapsulates all observation computation methods for the vehicle."""
 
-    _detector_cache: Dict[str, BatchedVisionTrackDetector] = {}
+    _detector_cache: dict[str, BatchedVisionTrackDetector] = {}
 
     @classmethod
     def get_detector(cls, device: str, img_h: int = 128, img_w: int = 128) -> BatchedVisionTrackDetector:
@@ -71,9 +72,9 @@ class CarObservations:
         _, _, yaw = euler_xyz_from_quat(asset.data.root_quat_w.torch)
 
         query = oracle.query(pos_2d, yaw)
-        lat_err = query["lateral_error"]   # (N, 1)
-        head_err = query["heading_error"] # (N, 1)
-        tan_vec = query["tangent"]        # (N, 2)
+        lat_err = query["lateral_error"]  # (N, 1)
+        head_err = query["heading_error"]  # (N, 1)
+        tan_vec = query["tangent"]  # (N, 2)
 
         vx = asset.data.root_lin_vel_b.torch[:, 0:1]
         vy = asset.data.root_lin_vel_b.torch[:, 1:2]

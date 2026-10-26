@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import math
-from typing import Any, Optional
+from typing import Any
+
 import cv2
 import numpy as np
 import torch
@@ -32,7 +34,7 @@ class TrackVisionHUD:
         self,
         rgb_tensor: torch.Tensor,
         detection_details: dict[str, Any],
-        telemetry: Optional[dict[str, Any]] = None,
+        telemetry: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Constructs an annotated composite dashboard image.
 
@@ -52,10 +54,7 @@ class TrackVisionHUD:
             curr = curr.detach()
         if hasattr(curr, "cpu"):
             curr = curr.cpu()
-        if hasattr(curr, "numpy"):
-            img_np = curr.numpy()
-        else:
-            img_np = np.asarray(curr)
+        img_np = curr.numpy() if hasattr(curr, "numpy") else np.asarray(curr)
 
         if img_np.ndim == 4:
             img_np = img_np[0]
@@ -81,18 +80,13 @@ class TrackVisionHUD:
             mask_raw = mask_raw.detach()
         if hasattr(mask_raw, "cpu"):
             mask_raw = mask_raw.cpu()
-        if hasattr(mask_raw, "numpy"):
-            mask_t = mask_raw.numpy()
-        else:
-            mask_t = np.asarray(mask_raw)
+        mask_t = mask_raw.numpy() if hasattr(mask_raw, "numpy") else np.asarray(mask_raw)
 
         mask_u8 = np.clip(mask_t * 255.0, 0, 255).astype(np.uint8)
         mask_bgr = cv2.applyColorMap(mask_u8, cv2.COLORMAP_VIRIDIS)
 
         x_near_norm = float(detection_details["x_near"][0].item())
         x_far_norm = float(detection_details["x_far"][0].item())
-        conf_near = float(detection_details["conf_near"][0].item())
-        conf_far = float(detection_details["conf_far"][0].item())
         near_roi_range = detection_details["near_roi_range"]
         far_roi_range = detection_details["far_roi_range"]
 
@@ -101,10 +95,7 @@ class TrackVisionHUD:
             feat_raw = feat_raw.detach()
         if hasattr(feat_raw, "cpu"):
             feat_raw = feat_raw.cpu()
-        if hasattr(feat_raw, "numpy"):
-            features = feat_raw.numpy()
-        else:
-            features = np.asarray(feat_raw)
+        features = feat_raw.numpy() if hasattr(feat_raw, "numpy") else np.asarray(feat_raw)
 
         e_lat = float(features[0])
         e_head_rad = float(features[1])
@@ -157,7 +148,7 @@ class TrackVisionHUD:
         # Highlight Near & Far Center points
         cv2.circle(cam_panel, (near_px, near_y_mid), 5, (255, 255, 0), -1)  # Cyan circle
         cv2.circle(cam_panel, (near_px, near_y_mid), 7, (0, 0, 0), 1)
-        cv2.circle(cam_panel, (far_px, far_y_mid), 5, (0, 165, 255), -1)   # Orange circle
+        cv2.circle(cam_panel, (far_px, far_y_mid), 5, (0, 165, 255), -1)  # Orange circle
         cv2.circle(cam_panel, (far_px, far_y_mid), 7, (0, 0, 0), 1)
 
         # Lateral Error Vector Arrow (from camera optical center to near center)
@@ -166,7 +157,9 @@ class TrackVisionHUD:
 
         # Title on Camera Panel
         cv2.rectangle(cam_panel, (0, 0), (ps, 22), (30, 30, 30), -1)
-        cv2.putText(cam_panel, "ONBOARD CAMERA + CENTERLINE", (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
+        cv2.putText(
+            cam_panel, "ONBOARD CAMERA + CENTERLINE", (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1
+        )
 
         # --- B. Annotate Segmentation Mask Panel ---
         # Add center points and detected path on mask panel
@@ -177,7 +170,9 @@ class TrackVisionHUD:
 
         # Title on Mask Panel
         cv2.rectangle(mask_panel, (0, 0), (ps, 22), (30, 30, 30), -1)
-        cv2.putText(mask_panel, "TRACK BOUNDARY SEGMENTATION", (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
+        cv2.putText(
+            mask_panel, "TRACK BOUNDARY SEGMENTATION", (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1
+        )
 
         # 4. Concatenate side-by-side
         video_strip = np.hstack([cam_panel, mask_panel])
@@ -201,17 +196,65 @@ class TrackVisionHUD:
 
         # Row 1: Key Metrics
         conf_color = (0, 255, 0) if confidence > 0.75 else ((0, 215, 255) if confidence > 0.45 else (0, 0, 255))
-        cv2.putText(banner, f"SPEED: {speed_kmh:4.1f} km/h ({speed_ms:3.1f} m/s)", (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 255, 255), 1)
-        cv2.putText(banner, f"CONFIDENCE: {confidence*100:3.0f}%", (ps + 12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, conf_color, 1)
+        cv2.putText(
+            banner,
+            f"SPEED: {speed_kmh:4.1f} km/h ({speed_ms:3.1f} m/s)",
+            (12, 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            (255, 255, 255),
+            1,
+        )
+        cv2.putText(
+            banner,
+            f"CONFIDENCE: {confidence * 100:3.0f}%",
+            (ps + 12, 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            conf_color,
+            1,
+        )
 
         # Row 2: Error metrics
         lat_color = (0, 255, 0) if abs(lat_cm) < 15.0 else ((0, 165, 255) if abs(lat_cm) < 35.0 else (0, 0, 255))
-        cv2.putText(banner, f"LAT ERROR: {lat_cm:+5.1f} cm ({e_lat:+4.2f})", (12, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.45, lat_color, 1)
-        cv2.putText(banner, f"HEADING ERR: {head_deg:+5.1f} deg", (ps + 12, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(
+            banner,
+            f"LAT ERROR: {lat_cm:+5.1f} cm ({e_lat:+4.2f})",
+            (12, 44),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            lat_color,
+            1,
+        )
+        cv2.putText(
+            banner,
+            f"HEADING ERR: {head_deg:+5.1f} deg",
+            (ps + 12, 44),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+        )
 
         # Row 3: Progress & Steering
-        cv2.putText(banner, f"PROGRESS: {progress_pct:4.1f}% | LAP: {lap_time:4.1f}s", (12, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (200, 200, 200), 1)
-        cv2.putText(banner, f"STEER ANGLE: {steer_deg:+4.1f} deg", (ps + 12, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (200, 200, 200), 1)
+        cv2.putText(
+            banner,
+            f"PROGRESS: {progress_pct:4.1f}% | LAP: {lap_time:4.1f}s",
+            (12, 64),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (200, 200, 200),
+            1,
+        )
+        cv2.putText(
+            banner,
+            f"STEER ANGLE: {steer_deg:+4.1f} deg",
+            (ps + 12, 64),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (200, 200, 200),
+            1,
+        )
 
         # Row 4: Graphical Lateral Alignment Gauge
         gauge_y = 86
@@ -223,7 +266,9 @@ class TrackVisionHUD:
         cv2.rectangle(banner, (gauge_x_start, gauge_y), (gauge_x_start + gauge_w, gauge_y + 10), (45, 45, 50), -1)
         # Left and Right track boundaries
         cv2.line(banner, (gauge_x_start, gauge_y - 2), (gauge_x_start, gauge_y + 12), (255, 255, 255), 2)
-        cv2.line(banner, (gauge_x_start + gauge_w, gauge_y - 2), (gauge_x_start + gauge_w, gauge_y + 12), (255, 255, 255), 2)
+        cv2.line(
+            banner, (gauge_x_start + gauge_w, gauge_y - 2), (gauge_x_start + gauge_w, gauge_y + 12), (255, 255, 255), 2
+        )
         # Centerline marker
         cv2.line(banner, (gauge_mid, gauge_y - 2), (gauge_mid, gauge_y + 12), (0, 255, 255), 2)
 
@@ -232,8 +277,18 @@ class TrackVisionHUD:
         cv2.circle(banner, (veh_gauge_x, gauge_y + 5), 6, lat_color, -1)
         cv2.circle(banner, (veh_gauge_x, gauge_y + 5), 7, (255, 255, 255), 1)
 
-        cv2.putText(banner, "LEFT", (gauge_x_start - 38, gauge_y + 9), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (160, 160, 160), 1)
-        cv2.putText(banner, "RIGHT", (gauge_x_start + gauge_w + 6, gauge_y + 9), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (160, 160, 160), 1)
+        cv2.putText(
+            banner, "LEFT", (gauge_x_start - 38, gauge_y + 9), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (160, 160, 160), 1
+        )
+        cv2.putText(
+            banner,
+            "RIGHT",
+            (gauge_x_start + gauge_w + 6, gauge_y + 9),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.35,
+            (160, 160, 160),
+            1,
+        )
 
         # Combine video strip and banner
         composite = np.vstack([video_strip, banner])
@@ -243,7 +298,7 @@ class TrackVisionHUD:
         self,
         rgb_tensor: torch.Tensor,
         detection_details: dict[str, Any],
-        telemetry: Optional[dict[str, Any]] = None,
+        telemetry: dict[str, Any] | None = None,
         wait_ms: int = 1,
     ) -> np.ndarray:
         """Draws HUD and updates the interactive GUI window if display is enabled."""
@@ -254,6 +309,7 @@ class TrackVisionHUD:
             if self._tk_root is None:
                 try:
                     import tkinter as tk
+
                     self._tk_root = tk.Tk()
                     self._tk_root.title(self.window_name)
                     self._tk_root.geometry("+30+60")
@@ -268,6 +324,7 @@ class TrackVisionHUD:
             if self._tk_root is not None and not self._display_failed:
                 try:
                     from PIL import Image, ImageTk
+
                     # Convert BGR to RGB for PIL / Tkinter
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     pil_img = Image.fromarray(rgb_frame)
@@ -275,7 +332,7 @@ class TrackVisionHUD:
                     self._tk_label.configure(image=self._tk_img_ref)
                     self._tk_root.update_idletasks()
                     self._tk_root.update()
-                except Exception as e:
+                except Exception:
                     pass
 
         return frame
@@ -283,9 +340,6 @@ class TrackVisionHUD:
     def close(self):
         """Closes live display window."""
         if self._tk_root is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._tk_root.destroy()
-            except Exception:
-                pass
             self._tk_root = None
-

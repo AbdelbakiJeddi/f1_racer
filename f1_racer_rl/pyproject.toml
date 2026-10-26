@@ -19,6 +19,7 @@ authors = [
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "isaaclab-dev[rsl-rl]",
+    "leatherback-racer",
 ]
 
 [project.entry-points."isaaclab.tasks"]
@@ -69,6 +70,7 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
+"leatherback-racer" = { path = "..", editable = true }
 "isaaclab" = { path = "../../../../../IsaacLab-3.0/source/isaaclab", editable = true }
 "isaaclab-assets" = { path = "../../../../../IsaacLab-3.0/source/isaaclab_assets", editable = true }
 "isaaclab-contrib" = { path = "../../../../../IsaacLab-3.0/source/isaaclab_contrib", editable = true }
@@ -101,6 +103,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["f1_racer_rl"]
@@ -123,7 +126,7 @@ isaaclab = ["isaaclab", "isaaclab_newton", "isaaclab_ov", "isaaclab_physx"]
 "isaaclab-assets" = ["isaaclab_assets"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/__init__.py" = ["F401", "F403"]
+"**/__init__.py" = ["E402", "F401", "F403"]
 "**/__init__.pyi" = ["F401", "F403"]
 "scripts/**/*.py" = ["E402"]
 

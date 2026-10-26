@@ -6,19 +6,16 @@ from onboard RGB camera images without any heavy neural networks.
 
 from __future__ import annotations
 
-import math
-from typing import Tuple, Optional
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class BatchedVisionTrackDetector(nn.Module):
     """Batched, GPU-accelerated classical vision detector for racing track boundaries.
-    
+
     The track features Racing Yellow boundary lines (R~1.0, G~0.82, B~0.0)
     on dark grey asphalt tarmac (RGB~0.12).
-    
+
     Processing Steps:
     1. Color Isolation: Enhances yellow line contrast using chromaticity difference (R + G - 2*B).
     2. Dual-horizon Scanline Sampling: Samples near lookahead (bottom 20-35%) and far lookahead (middle 45-60%).
@@ -30,8 +27,8 @@ class BatchedVisionTrackDetector(nn.Module):
         self,
         img_h: int = 128,
         img_w: int = 128,
-        near_roi_range: Tuple[float, float] = (0.46, 0.52),
-        far_roi_range: Tuple[float, float] = (0.40, 0.45),
+        near_roi_range: tuple[float, float] = (0.46, 0.52),
+        far_roi_range: tuple[float, float] = (0.40, 0.45),
         yellow_threshold: float = 0.25,
         expected_track_width_px: float = 64.0,
         near_half_width: float = 0.525,
@@ -70,7 +67,7 @@ class BatchedVisionTrackDetector(nn.Module):
 
     def extract_line_mask(self, rgb: torch.Tensor) -> torch.Tensor:
         """Isolates racing yellow lines against dark tarmac with zero noise floor.
-        
+
         Args:
             rgb: (N, 3, H, W) normalized in [0.0, 1.0].
         Returns:
@@ -91,10 +88,10 @@ class BatchedVisionTrackDetector(nn.Module):
         self,
         mask_slice: torch.Tensor,
         expected_half_span: float = 0.80,
-        prev_estimate: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        prev_estimate: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Finds track centerline from a horizontal image slice using dual boundary tracking.
-        
+
         Args:
             mask_slice: (N, h_slice, W) line probability mask.
             expected_half_span: Expected distance from boundary line to corridor center in [-1, 1].
@@ -145,7 +142,7 @@ class BatchedVisionTrackDetector(nn.Module):
 
     def detect_detailed(self, rgb_images: torch.Tensor) -> dict:
         """Processes a batch of camera frames and returns detailed detection geometry.
-        
+
         Args:
             rgb_images: Tensor of shape (N, H, W, 3) or (N, 3, H, W).
         Returns:
@@ -177,7 +174,7 @@ class BatchedVisionTrackDetector(nn.Module):
         if rgb.shape[1] == 4:
             rgb = rgb[:, :3]
 
-        H, W = rgb.shape[-2], rgb.shape[-1]
+        H, _W = rgb.shape[-2], rgb.shape[-1]
 
         # 1. Color Mask
         mask = self.extract_line_mask(rgb)  # (N, H, W)
@@ -229,11 +226,9 @@ class BatchedVisionTrackDetector(nn.Module):
             "far_roi_range": self.far_roi_range,
         }
 
-    def forward(
-        self, rgb_images: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, rgb_images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Processes a batch of camera frames.
-        
+
         Args:
             rgb_images: Tensor of shape (N, H, W, 3) or (N, 3, H, W)
                         in range [0, 255] (uint8) or [0.0, 1.0] (float32).
@@ -250,4 +245,3 @@ class BatchedVisionTrackDetector(nn.Module):
 
 # Clean class alias
 TrackDetector = BatchedVisionTrackDetector
-
