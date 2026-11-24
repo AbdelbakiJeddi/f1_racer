@@ -10,6 +10,8 @@ from leatherback_racer.track import TrackOracle
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import euler_xyz_from_quat
 
+from .terminations import wheel_lateral_extent
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
     from isaaclab.envs import ManagerBasedRLEnv
@@ -77,20 +79,12 @@ class CarRewards:
     @staticmethod
     def boundary_penalty(
         env: ManagerBasedRLEnv,
-        margin_threshold: float = 0.45,
+        margin_threshold: float = 0.50,
         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     ) -> torch.Tensor:
-        """Penalizes vehicle when it strays beyond the boundary safety margin."""
+        """Penalizes the outermost wheel once it gets closer to the boundary line than the safety margin."""
         asset: Articulation = env.scene[asset_cfg.name]
-        oracle = TrackOracle.get_instance(device=str(asset.device))
-
-        pos_2d = asset.data.root_pos_w.torch[:, :2] - env.scene.env_origins[:, :2]
-        _, _, yaw = euler_xyz_from_quat(asset.data.root_quat_w.torch)
-
-        query = oracle.query(pos_2d, yaw)
-        lat_err = torch.abs(query["lateral_error"].squeeze(-1))  # (N,)
-
-        violation = torch.clamp(lat_err - margin_threshold, min=0.0)
+        violation = torch.clamp(wheel_lateral_extent(env, asset) - margin_threshold, min=0.0)
         return torch.square(violation)
 
     @staticmethod

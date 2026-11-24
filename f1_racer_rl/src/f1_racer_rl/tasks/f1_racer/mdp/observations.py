@@ -116,6 +116,7 @@ class CarObservations:
         img_w = rgb_images.shape[2] if rgb_images.dim() == 4 and rgb_images.shape[-1] in (3, 4) else rgb_images.shape[3]
 
         detector = CarObservations.get_detector(device=str(rgb_images.device), img_h=img_h, img_w=img_w)
+        detector.reset(env.episode_length_buf == 0)  # new episodes must not inherit the last car's centre
         features, _ = detector(rgb_images)  # (N, 3): [e_lat, e_heading, confidence]
 
         asset: Articulation = env.scene[asset_cfg.name]

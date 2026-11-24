@@ -219,7 +219,7 @@ class RewardsCfg:
     boundary = RewTerm(
         func=mdp.CarRewards.boundary_penalty,
         weight=-2.0,
-        params={"margin_threshold": 0.45},
+        params={"margin_threshold": 0.50},
     )
 
     # (7) Action smoothness: penalize physical knuckle angular velocity (wheel shaking)
@@ -246,8 +246,8 @@ class TerminationsCfg:
     # (1) Episode timeout
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    # (2) Boundary crash / off-track termination
-    off_track = DoneTerm(func=mdp.CarTerminations.off_track, params={"max_lateral_distance": 0.75})
+    # (2) Off-track: ends the episode when any wheel touches a boundary line
+    off_track = DoneTerm(func=mdp.CarTerminations.off_track, params={"line_thickness": 0.08})
 
     # (3) Vehicle rollover or flip
     rollover = DoneTerm(func=mdp.CarTerminations.rollover, params={"max_tilt_rad": 0.785})

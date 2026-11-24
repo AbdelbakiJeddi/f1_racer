@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .camera import Camera
-from .centre import BandEstimate, estimate_centre
+from .centre import BandEstimate, estimate_centre, refuted_sides, side_from_refuted
 from .mask import to_float, yellow_mask
 from .scan import band_profile, find_lines
 
@@ -49,27 +49,50 @@ class LaneDetector:
 
     def reset(self) -> None:
         self.prev_x = {"near": 0.0, "far": 0.0}  # last centre estimates, m
+        self.prev_valid = False  # prev_x holds a real estimate (not just the reset value)
 
     @staticmethod
     def band_row(rows: tuple[int, int]) -> float:
         return (rows[0] + rows[1]) / 2  # centre of rows r0..r1-1 in continuous v
 
-    def _band(self, mask: np.ndarray, name: str, rows: tuple[int, int]) -> BandEstimate:
+    def _scan(self, mask: np.ndarray, rows: tuple[int, int]) -> tuple[list, float, str | None]:
+        """Lines on the band, half-width in px, and the side a lone line must be (None = undecided)."""
         v = self.band_row(rows)
-        lines = find_lines(band_profile(mask, rows), self.line_level, self.min_mass)
+        profile = band_profile(mask, rows)
+        lines = find_lines(profile, self.line_level, self.min_mass)
         half_px = float(self.camera.width_px(self.half_width, v))
-        prior_u = float(self.camera.to_pixel_u(self.prev_x[name], v))
-        return estimate_centre(lines, half_px, prior_u, self.tolerance)
+        side = side_from_refuted(refuted_sides(lines[0], half_px, profile, self.line_level)) if len(lines) == 1 else None
+        return lines, half_px, side
 
     def __call__(self, frame: np.ndarray) -> Detection:
         mask = yellow_mask(to_float(frame), self.mask_low, self.mask_high)
-        near = self._band(mask, "near", self.near_rows)
-        far = self._band(mask, "far", self.far_rows)
+        scans = {"near": self._scan(mask, self.near_rows), "far": self._scan(mask, self.far_rows)}
+        v = {"near": self.band_row(self.near_rows), "far": self.band_row(self.far_rows)}
+        def prior(name: str, x: float) -> float:
+            return float(self.camera.to_pixel_u(x, v[name]))
+
+        bands = {n: estimate_centre(*scans[n][:2], prior(n, self.prev_x[n]), self.tolerance) for n in v}
+        # A lone line is placed by, in order: a pair on the other band, last frame's centre, the missing-line test.
+        # The test comes last because worn or shadowed paint also looks like "no line there".
+        for name, other in (("near", "far"), ("far", "near")):
+            lines, half_px, side = scans[name]
+            if bands[name].case not in ("left", "right"):
+                continue
+            if bands[other].case == "pair":
+                x_other = float(self.camera.lateral(bands[other].u, v[other]))
+                bands[name] = estimate_centre(lines, half_px, prior(name, x_other), self.tolerance)
+            elif not self.prev_valid:
+                # a lone line in both bands is the same boundary, so an undecided band borrows the other's answer
+                if side is None and len(scans[other][0]) == 1:
+                    side = scans[other][2]
+                bands[name] = estimate_centre(lines, half_px, prior(name, self.prev_x[name]), self.tolerance, side=side)
+        near, far = bands["near"], bands["far"]
 
         v_near, v_far = self.band_row(self.near_rows), self.band_row(self.far_rows)
         x_near = self.prev_x["near"] if near.u is None else float(self.camera.lateral(near.u, v_near))
         x_far = self.prev_x["far"] if far.u is None else float(self.camera.lateral(far.u, v_far))
         self.prev_x = {"near": x_near, "far": x_far}
+        self.prev_valid = self.prev_valid or near.u is not None or far.u is not None
 
         dz = float(self.camera.distance(v_far) - self.camera.distance(v_near))
         return Detection(

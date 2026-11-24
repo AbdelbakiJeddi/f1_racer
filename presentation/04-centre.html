@@ -52,18 +52,38 @@
   <div class="key">A single line is ambiguous. The <b>prior</b> resolves it, so the prior must be good.</div>
 </section>
 
+<section id="missing">
+  <h2>Where is the other line?<span class="sl">detector.py · refuted_sides</span></h2>
+  <p>Image centre is a poor prior on a bend: the left line can swing right of the middle. The detector uses three clues, in this order:</p>
+  <ol>
+    <li><b>a pair on the other band</b>: its centre, carried over in metres,</li>
+    <li><b>memory</b>: last frame's centre,</li>
+    <li><b>the missing-line test</b>: each hypothesis says where the <i>other</i> line must be. If that spot is in view and empty, that hypothesis is refuted.</li>
+  </ol>
+  <figure class="demo" id="miss">
+    <canvas class="px" id="ms-cam" style="max-width:420px;margin:0 auto"></canvas>
+    <div class="controls">
+      <label for="ms-off">offset</label><input type="range" id="ms-off" min="-0.3" max="0.3" step="0.01" value="0.25"><output for="ms-off"></output>
+      <label for="ms-cur">curvature</label><input type="range" id="ms-cur" min="-1.2" max="1.2" step="0.05" value="1.2"><output for="ms-cur"></output>
+    </div>
+    <div class="readout"><div><span>near band</span><b id="ms-n">—</b></div><div><span>far band</span><b id="ms-f">—</b></div><div><span>e_lat detected</span><b id="ms-el">—</b></div><div><span>e_lat truth</span><b id="ms-t">—</b></div></div>
+    <figcaption>No memory (first frame). Preset: car 5 cm inside the left line, road bending right, so the left line sits right of centre. Dashed box = where the other line would be for one hypothesis: <span class="ko">orange</span> = in view but empty (refuted), <span class="ok">green</span> = a line is there. With image centre as prior this frame gave <code>e_lat</code> −0.76; the far band refutes "right line" and the answer becomes +1.00.</figcaption>
+  </figure>
+  <div class="key">Absence is evidence only if paint is complete. Worn or shadowed paint also looks empty, so the test comes <b>last</b>: a pair or a memory overrules it.</div>
+</section>
+
 <section id="memory">
   <h2>Memory: last frame is the best prior<span class="sl">detector.py · prev_x</span></h2>
-  <p>The car moves a few millimetres per frame, so last frame's centre is an excellent guess. The detector stores it as <code>prev_x</code> in <b>metres</b> (one value serves both bands) and converts it to pixels on each row.</p>
+  <p>The car moves a few millimetres per frame, so last frame's centre is an excellent guess. The detector stores it as <code>prev_x</code> in <b>metres</b> (one value serves both bands) and converts it to pixels on each row. It also holds the answer when no line is seen at all.</p>
   <figure class="demo" id="drift">
     <div class="grid2" style="margin:0">
       <div><p class="lbl">Camera · near band choices</p><canvas class="px" id="dr-cam"></canvas></div>
       <div><p class="lbl">e_lat as the car drifts past both boundaries</p><canvas class="plot tall" id="dr-plot"></canvas></div>
     </div>
     <button id="dr-play">Pause</button>
-    <figcaption>The car slides from the centre past the right line, back, then past the left. Grey = truth (clipped at ±1). <span class="ok">Green</span> = detector with memory. <span class="ko">Orange</span> = same detector, reset every frame. In the shaded zones only one line is visible, and the memory-less detector jumps to the <b>wrong sign</b>: a policy would steer further off the track. The camera shows both choices on the near band.</figcaption>
+    <figcaption>The car slides 0.8 m off the road to the right, turned away from it, comes back, then does the same on the left. Grey = truth (clipped at ±1). <span class="ok">Green</span> = detector with memory. <span class="ko">Orange</span> = same detector, reset every frame. Shaded = car off the road. Far out, the near band sees no line: without memory <code>e_lat</code> drops to <b>0</b> ("centred") in 38 frames, with memory it holds ±1 on the correct side.</figcaption>
   </figure>
-  <div class="key">Without memory, <code>e_lat</code> <b>flips sign</b> past the boundary. With memory it saturates at ±1 on the correct side, which is the signal a controller needs to recover.</div>
+  <div class="key">Without memory, a car that has lost the lines reports "centred". With memory it reports ±1 on the correct side, which is the signal a controller needs to recover.</div>
 </section>
 </main>
 <script src="assets/tracksim.js"></script>
@@ -82,7 +102,7 @@
     <g id="n-q1"><path class="dia" d="M270,62 L380,122 L270,182 L160,122 Z"/><text x="270" y="117" text-anchor="middle">a pair with</text><text x="270" y="133" text-anchor="middle">error &lt; 0.35?</text></g>
     <g id="n-pair"><rect x="440" y="14" width="300" height="56" rx="8"/><text x="590" y="37" text-anchor="middle" font-weight="700">PAIR</text><text x="590" y="56" text-anchor="middle">centre = midpoint · conf = 1 − err/0.35</text></g>
     <g id="n-q2"><path class="dia" d="M500,130 L580,170 L500,210 L420,170 Z"/><text x="500" y="174" text-anchor="middle">any blob?</text></g>
-    <g id="n-single"><rect x="610" y="96" width="140" height="64" rx="8"/><text x="680" y="118" text-anchor="middle" font-weight="700">SINGLE</text><text x="680" y="136" text-anchor="middle">side nearest prior</text><text x="680" y="152" text-anchor="middle">conf 0.5</text></g>
+    <g id="n-single"><rect x="610" y="96" width="140" height="64" rx="8"/><text x="680" y="118" text-anchor="middle" font-weight="700">SINGLE</text><text x="680" y="136" text-anchor="middle">side: pair · memory</text><text x="680" y="152" text-anchor="middle">· test · conf 0.5</text></g>
     <g id="n-none"><rect x="610" y="180" width="140" height="64" rx="8"/><text x="680" y="202" text-anchor="middle" font-weight="700">NONE</text><text x="680" y="220" text-anchor="middle">reuse last centre</text><text x="680" y="236" text-anchor="middle">conf 0</text></g>
     <path id="e-in" class="e" d="M130,122 L158,122" marker-end="url(#ah)"/>
     <path id="e-yes" class="e" d="M300,78 L300,42 L438,42" marker-end="url(#ah)"/><text class="lab" x="308" y="60">yes</text>
@@ -144,20 +164,44 @@
   }
   drawHyp();
 
+  // ---------- missing-line test
+  const msDet = new TS.LaneDetector(cam);
+  const msOff = Demo.slider("ms-off", (x) => Demo.sgn(x) + " m", drawMiss), msCur = Demo.slider("ms-cur", (x) => Demo.sgn(x) + " /m", drawMiss);
+  function drawMiss() {
+    const tr = base.with({ offset: msOff(), curvature: msCur() }), frame = tr.render();
+    msDet.reset(); const d = msDet.detect(frame);
+    const cv = document.getElementById("ms-cam"), s = Fig.detection(cv, frame, d, cam), ctx = cv.getContext("2d");
+    ctx.save(); ctx.setLineDash([s, s]); ctx.lineWidth = Math.max(2, s * 0.4);
+    for (const b of [d.near, d.far]) {
+      if (b.lines.length !== 1) continue;
+      const u = b.lines[0].u;
+      for (const [side, other] of [["left", u + 2 * b.halfPx], ["right", u - 2 * b.halfPx]]) {
+        if (other < 3 || other > 125) continue; // out of view: no information
+        ctx.strokeStyle = b.refuted.has(side) ? ORANGE : GREEN;
+        ctx.strokeRect((other - 4) * s, b.rows[0] * s, 9 * s, (b.rows[1] - b.rows[0]) * s);
+      }
+    }
+    ctx.restore();
+    const say = (b) => (b.case === "left" || b.case === "right" ? `${b.case} line · ${b.rule}` : b.case);
+    Demo.set("ms-n", say(d.near)); Demo.set("ms-f", say(d.far));
+    Demo.set("ms-el", Demo.sgn(d.eLat)); Demo.set("ms-t", Demo.sgn(TS.clip(tr.centreX(d.zNear) / tr.halfWidth, -1, 1)));
+  }
+  drawMiss();
+
   // ---------- drift with / without memory
   const N = 240;
-  const offAt = (i) => { const p = i / N; return p < 0.25 ? 0.45 * (p / 0.25) : p < 0.5 ? 0.45 * (1 - (p - 0.25) / 0.25) : p < 0.75 ? -0.45 * ((p - 0.5) / 0.25) : -0.45 * (1 - (p - 0.75) / 0.25); };
+  const A = 0.8, offAt = (i) => { const p = i / N; return p < 0.25 ? A * (p / 0.25) : p < 0.5 ? A * (1 - (p - 0.25) / 0.25) : p < 0.75 ? -A * ((p - 0.5) / 0.25) : -A * (1 - (p - 0.75) / 0.25); };
   const good = new TS.LaneDetector(cam), bad = new TS.LaneDetector(cam, { stateful: false }), hist = [];
   for (let i = 0; i < N; i++) {
-    const o = offAt(i), f = base.with({ offset: o }).render(), dg = good.detect(f), db = bad.detect(f);
-    hist.push({ o, f, truth: TS.clip(o / 0.3, -1, 1), good: dg.eLat, bad: db.eLat, gu: dg.near.u, bu: db.near.u, gl: dg.near.used, bl: db.near.used });
+    const o = offAt(i), tr = base.with({ offset: o, yaw: 0.2 * Math.sign(o) }), f = tr.render(), dg = good.detect(f), db = bad.detect(f);
+    hist.push({ o, f, tx: tr.centreX(dg.zNear), truth: TS.clip(tr.centreX(dg.zNear) / 0.3, -1, 1), good: dg.eLat, bad: db.eLat, gu: dg.near.u, bu: db.near.u, gl: dg.near.used, bl: db.near.used });
   }
   const drCam = document.getElementById("dr-cam"), drPlot = document.getElementById("dr-plot");
   function drift(t) {
     const i = Math.floor(t * 30) % N, h = hist[i];
     const s = Fig.camera(drCam, h.f, { midline: true, bands: [{ rows: ROWS, color: "near", lines: h.gl }] }), ctx = drCam.getContext("2d");
     for (const [u, col] of [[h.bu, ORANGE], [h.gu, GREEN]]) if (u != null) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(TS.clip(u, -20, 148) * s, v * s, s * 2.2, 0, 7); ctx.fill(); }
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cam.toPixelU(h.o, v) * s, v * s, s * 3, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cam.toPixelU(h.tx, v) * s, v * s, s * 3, 0, 7); ctx.stroke();
     const dpr = Fig.sizeCanvas(drPlot), g = drPlot.getContext("2d"), W = drPlot.width, H = drPlot.height, pad = 30 * dpr;
     const X = (k) => pad + (k / (N - 1)) * (W - pad - 8 * dpr), Y = (e) => H / 2 - e * (H / 2 - 14 * dpr);
     g.clearRect(0, 0, W, H);
@@ -169,7 +213,7 @@
     g.fillStyle = "#111"; g.beginPath(); g.arc(X(i), Y(h.good), 4 * dpr, 0, 7); g.fill();
   }
   const a = Demo.animate(document.getElementById("drift"), drift, document.getElementById("dr-play"));
-  Fig.onTheme(() => { drawScen(); drawHyp(); a.redraw(); });
+  Fig.onTheme(() => { drawScen(); drawHyp(); drawMiss(); a.redraw(); });
 })();
 </script>
 </body>

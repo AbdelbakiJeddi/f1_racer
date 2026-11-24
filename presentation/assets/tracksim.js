@@ -175,7 +175,21 @@
   }
 
   // ------------------------------------------------------------------ centre (block 4)
-  function estimateCentre(lines, halfPx, priorU, tolerance = 0.35, singleConfidence = 0.5) {
+  // Sides a lone line cannot be: the other boundary would be in view, but the profile is empty there.
+  // "left" = "this line is the left boundary" (the other one would sit at u + 2*halfPx).
+  function refutedSides(line, halfPx, profile, level = 0.1, margin = 3, win = 4) {
+    const out = new Set(), W = profile.length;
+    for (const [side, other] of [["left", line.u + 2 * halfPx], ["right", line.u - 2 * halfPx]]) {
+      if (other < margin || other > W - margin) continue;
+      let mx = 0;
+      for (let c = Math.max(0, Math.floor(other) - win); c < Math.min(W, Math.floor(other) + win + 1); c++) mx = Math.max(mx, profile[c]);
+      if (mx < level) out.add(side);
+    }
+    return out;
+  }
+  function sideFromRefuted(r) { return r.size !== 1 ? null : r.has("right") ? "left" : "right"; }
+
+  function estimateCentre(lines, halfPx, priorU, tolerance = 0.35, singleConfidence = 0.5, side = null) {
     let best = null;
     for (let i = 0; i < lines.length; i++)
       for (let j = i + 1; j < lines.length; j++) {
@@ -188,11 +202,12 @@
       if (best.a.clipped || best.b.clipped) conf *= 0.8;
       return { u: (best.a.u + best.b.u) / 2, case: "pair", confidence: conf, used: [best.a, best.b] };
     }
-    const cands = [];
+    let cands = [];
     for (const l of lines) {
       cands.push({ d: Math.abs(l.u + halfPx - priorU), u: l.u + halfPx, side: "left", l });
       cands.push({ d: Math.abs(l.u - halfPx - priorU), u: l.u - halfPx, side: "right", l });
     }
+    if (side && lines.length === 1) cands = cands.filter((c) => c.side === side);
     if (cands.length) {
       let m = cands[0];
       for (const c of cands) if (c.d < m.d) m = c; // first minimum, like Python min()
@@ -210,25 +225,46 @@
 
   class LaneDetector {
     constructor(camera, opts = {}) { this.camera = camera; Object.assign(this, LAB_DEFAULTS, opts); this.reset(); }
-    reset() { this.prevX = { near: 0, far: 0 }; }
+    reset() { this.prevX = { near: 0, far: 0 }; this.prevValid = false; }
     static bandRow(rows) { return (rows[0] + rows[1]) / 2; }
-    band(mask, name, rows) {
+    scan(mask, rows) {
       const v = LaneDetector.bandRow(rows);
       const profile = bandProfile(mask, this.camera.width, rows);
       const lines = findLines(profile, this.lineLevel, this.minMass);
       const halfPx = this.camera.widthPx(this.halfWidth, v);
-      const priorU = this.camera.toPixelU(this.prevX[name], v);
-      const est = estimateCentre(lines, halfPx, priorU, this.tolerance);
-      return Object.assign(est, { v, rows, profile, lines, halfPx, priorU });
+      const refuted = lines.length === 1 ? refutedSides(lines[0], halfPx, profile, this.lineLevel) : new Set();
+      return { v, rows, profile, lines, halfPx, refuted, side: sideFromRefuted(refuted) };
     }
     detect(frame) {
       if (!this.stateful) this.reset();
       const mask = labMask(frame, this.maskLow, this.maskHigh);
-      const near = this.band(mask, "near", this.nearRows);
-      const far = this.band(mask, "far", this.farRows);
+      const s = { near: this.scan(mask, this.nearRows), far: this.scan(mask, this.farRows) };
+      const est = {};
+      for (const n of ["near", "far"]) {
+        const b = s[n], priorU = this.camera.toPixelU(this.prevX[n], b.v);
+        est[n] = Object.assign(estimateCentre(b.lines, b.halfPx, priorU, this.tolerance), b, { priorU, rule: "memory" });
+      }
+      // A lone line is placed by, in order: a pair on the other band, last frame's centre, the missing-line test.
+      // The test comes last because worn or shadowed paint also looks like "no line there".
+      for (const [n, o] of [["near", "far"], ["far", "near"]]) {
+        const b = est[n];
+        if (b.case === "pair") b.rule = "pair";
+        if (b.case !== "left" && b.case !== "right") continue;
+        if (est[o].case === "pair") {
+          const priorU = this.camera.toPixelU(this.camera.lateral(est[o].u, est[o].v), b.v);
+          Object.assign(b, estimateCentre(b.lines, b.halfPx, priorU, this.tolerance), { priorU, rule: "pair on other band" });
+        } else if (!this.prevValid) {
+          let side = b.side;
+          // a lone line in both bands is the same boundary, so an undecided band borrows the other's answer
+          if (!side && s[o].lines.length === 1) side = s[o].side;
+          Object.assign(b, estimateCentre(b.lines, b.halfPx, b.priorU, this.tolerance, 0.5, side), { side, rule: side ? "missing-line test" : "no memory: image centre" });
+        }
+      }
+      const near = est.near, far = est.far;
       const xNear = near.u === null ? this.prevX.near : this.camera.lateral(near.u, near.v);
       const xFar = far.u === null ? this.prevX.far : this.camera.lateral(far.u, far.v);
       this.prevX = { near: xNear, far: xFar };
+      this.prevValid = this.prevValid || near.u !== null || far.u !== null;
       const zNear = this.camera.distance(near.v), zFar = this.camera.distance(far.v);
       return {
         eLat: clip(xNear / this.halfWidth, -1, 1),
