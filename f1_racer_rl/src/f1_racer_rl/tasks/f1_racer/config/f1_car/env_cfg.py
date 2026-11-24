@@ -198,10 +198,10 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Reward terms for path centering and forward racing."""
+    """Reward terms for path centering, forward racing, and lap completion."""
 
     # (1) Primary task: Gaussian reward for remaining centered between boundary lines
-    centering = RewTerm(func=mdp.CarRewards.centering, weight=1.5, params={"std": 0.25})
+    centering = RewTerm(func=mdp.CarRewards.centering, weight=3.5, params={"std": 0.25})
 
     # (2) Progress: forward velocity along track tangent
     progress = RewTerm(func=mdp.CarRewards.forward_progress, weight=1.0)
@@ -209,28 +209,34 @@ class RewardsCfg:
     # (3) Heading: alignment of car with track tangent direction
     heading = RewTerm(func=mdp.CarRewards.heading_alignment, weight=0.5)
 
-    # (4) Penalty for straying close to or outside the boundary ribbons
+    # (4) Penalty for slow runs (speed along tangent below 1.5 m/s)
+    slow_speed = RewTerm(func=mdp.slow_speed_penalty, weight=-1.0, params={"min_speed": 1.5})
+
+    # (5) Massive completion bonus for finishing the full lap
+    lap_completion = RewTerm(func=mdp.lap_completion_bonus, weight=50.0)
+
+    # (6) Penalty for straying close to or outside the boundary ribbons
     boundary = RewTerm(
         func=mdp.CarRewards.boundary_penalty,
         weight=-2.0,
         params={"margin_threshold": 0.45},
     )
 
-    # (5) Action smoothness: penalize physical knuckle angular velocity (wheel shaking)
+    # (7) Action smoothness: penalize physical knuckle angular velocity (wheel shaking)
     steering_smoothness = RewTerm(
         func=mdp.CarRewards.steering_smoothness,
         weight=-0.15,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["Knuckle__Upright__Front_.*"])},
     )
 
-    # (6) Action rate: penalize rapid back-and-forth steering action jitter
+    # (8) Action rate: penalize rapid back-and-forth steering action jitter
     steering_rate = RewTerm(
         func=mdp.CarRewards.steering_rate,
         weight=-0.25,
     )
 
-    # (7) Alive bonus: reward for surviving without crashing
-    alive = RewTerm(func=mdp.is_alive, weight=0.2)
+    # (9) Small step penalty / time cost to incentivize fast completion
+    step_penalty = RewTerm(func=mdp.is_alive, weight=-0.05)
 
 
 @configclass
@@ -245,6 +251,9 @@ class TerminationsCfg:
 
     # (3) Vehicle rollover or flip
     rollover = DoneTerm(func=mdp.CarTerminations.rollover, params={"max_tilt_rad": 0.785})
+
+    # (4) Full turn / lap completed
+    lap_completed = DoneTerm(func=mdp.lap_completed)
 
 
 ##
@@ -277,7 +286,7 @@ class F1RacerEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # 120 Hz physics with decimation=4 -> 30 Hz control
         self.decimation = 4
-        self.episode_length_s = 25.0
+        self.episode_length_s = 40.0
 
         # Free overview camera letting the user look at all environments and freely navigate the viewport
         self.sim.default_visualizer_cfg = KitVisualizerCfg(

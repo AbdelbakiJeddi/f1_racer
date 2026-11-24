@@ -17,6 +17,9 @@ dependencies = [
     "scipy",
     "torch",
     "torchvision",
+    "matplotlib",
+    "jupyter",
+    "ipykernel",
 ]
 
 [tool.setuptools.packages.find]

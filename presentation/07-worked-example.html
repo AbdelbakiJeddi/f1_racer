@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>7 · Worked example</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>
+  .calc td{text-align:left;font:13px ui-monospace,Menlo,monospace}.calc th{font-size:12px}
+  .subst{font:12px ui-monospace,Menlo,monospace;background:#faf9f6;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:8px 0;white-space:pre;overflow-x:auto;text-align:left}
+  .bars{display:grid;grid-template-columns:12rem 1fr 4.5rem;gap:8px 12px;align-items:center;font-size:13px}
+  .bars .b{height:16px;border-radius:3px}
+</style>
+</head>
+<body data-page="example">
+<main>
+<h1>7 · Worked example</h1>
+<p class="sub">One camera frame followed through all five blocks, with every intermediate number. Then the GPU detector on a sharp bend: failure → fix → verification. Every number on this page is computed live by the project's detector code. Move the sliders in step 0 and the whole page recomputes.</p>
+
+<section id="frame">
+  <h2>Step 0 · The frame<span class="sl">SyntheticTrack.render()</span></h2>
+  <p>A track seen by the car's camera: shifted right, turned right and bending right. These are the ground truth the detector does not know.</p>
+  <figure class="demo">
+    <div class="pair">
+      <div><canvas class="px" id="f-cam"></canvas></div>
+      <div>
+        <div class="controls" style="margin-top:0">
+          <label for="off">offset</label><input type="range" id="off" min="-0.2" max="0.2" step="0.01" value="0.06"><output for="off"></output>
+          <label for="yaw">yaw</label><input type="range" id="yaw" min="-0.25" max="0.25" step="0.01" value="0.10"><output for="yaw"></output>
+          <label for="crv">curvature</label><input type="range" id="crv" min="-0.8" max="0.8" step="0.05" value="0.5"><output for="crv"></output>
+        </div>
+        <table class="props" style="width:100%;margin-top:12px">
+          <tr><td>camera</td><td class="mono">f 64 px · h 0.25 m · v_h 35.84 · c_x 64</td></tr>
+          <tr><td>track</td><td class="mono">half-width 0.30 m</td></tr>
+          <tr><td>bands</td><td class="mono"><span class="near">near rows 68–74</span> · <span class="far">far rows 52–57</span></td></tr>
+        </table>
+      </div>
+    </div>
+    <figcaption>Preset: offset +0.06 m, yaw +0.10 rad, curvature +0.5 /m. No noise, so every number below is reproducible.</figcaption>
+  </figure>
+</section>
+
+<section id="mask">
+  <h2>Step 1 · Mask<span class="sl">yellow_mask(low 0.15, high 0.40)</span></h2>
+  <figure class="demo">
+    <div class="pair">
+      <div><canvas class="px" id="m-mask"></canvas></div>
+      <div><p class="lbl">One paint pixel (orange cross)</p><div class="subst" id="m-sub"></div><p class="lbl">One asphalt pixel</p><div class="subst" id="m-sub2"></div></div>
+    </div>
+    <figcaption>Paint scores far above <code>high</code>, so its mask is 1. Asphalt scores 0. The mask keeps only the two lines.</figcaption>
+  </figure>
+</section>
+
+<section id="scan">
+  <h2>Step 2 · Scan<span class="sl">band_profile() + find_lines()</span></h2>
+  <figure class="demo">
+    <canvas class="plot tall" id="s-prof"></canvas>
+    <table class="calc" style="width:100%"><thead><tr><th>band</th><th>line</th><th>u (px)</th><th>mass</th><th>clipped</th></tr></thead><tbody id="s-tab"></tbody></table>
+    <figcaption><span class="near">Blue</span> = near profile, <span class="far">violet</span> = far profile, dashed orange = level 0.1. Each band gives two runs. Their centroids <code>u</code> are the line positions.</figcaption>
+  </figure>
+</section>
+
+<section id="centre">
+  <h2>Step 3 · Centre<span class="sl">estimate_centre()</span></h2>
+  <figure class="demo">
+    <table class="calc" style="width:100%"><thead><tr><th>band</th><th>gap</th><th>expected 2·half_px</th><th>error</th><th>case</th><th>centre u</th><th>conf</th></tr></thead><tbody id="c-tab"></tbody></table>
+    <div class="subst" id="c-sub"></div>
+    <figcaption>Expected gap comes from the camera model: <code>2·half_px = 2·0.30·(v − v<sub>h</sub>)/h</code>. A pair within 35 % is accepted, and its midpoint is the centre.</figcaption>
+  </figure>
+</section>
+
+<section id="camera">
+  <h2>Step 4 · Camera<span class="sl">lateral(), distance()</span></h2>
+  <figure class="demo">
+    <div class="subst" id="k-sub"></div>
+    <figcaption>Band rows are taken at their middle: v = 71.5 (near) and 55.0 (far). Centre columns become metres on the ground.</figcaption>
+  </figure>
+</section>
+
+<section id="errors">
+  <h2>Step 5 · Errors<span class="sl">detector.py</span></h2>
+  <figure class="demo">
+    <div class="pair">
+      <div><canvas class="px" id="e-cam"></canvas></div>
+      <div><canvas class="px map" id="e-top"></canvas></div>
+    </div>
+    <div class="subst" id="e-sub"></div>
+    <table class="calc" style="width:100%"><thead><tr><th>output</th><th>detected</th><th>truth</th><th>difference</th></tr></thead><tbody id="e-tab"></tbody></table>
+    <figcaption>Truth = the same formulas applied to the simulator's exact centre at the same two distances. <span class="ok">Green</span> = within 0.02 (e_lat) or 1° (e_heading). With the preset, both are slightly off: the near-right line is <i>clipped</i> at the image border (step 2), so its centroid sits too far left. That pulls the near centre left (e_lat −0.034) and tilts the chord (+1.3°).</figcaption>
+  </figure>
+  <div class="key">Whole chain for this frame: <b id="chain">…</b></div>
+</section>
+
+<section id="fail">
+  <h2>Step 6 · Failure: GPU detector on a sharp bend<span class="sl">track_detector.py · _find_scanline_center()</span></h2>
+  <p>Now the production detector, on a centred car with a 0.8 /m right bend. Its constants are recomputed for this camera, so only its <i>logic</i> is tested.</p>
+  <figure class="demo">
+    <div class="grid2" style="margin:0">
+      <div><canvas class="px" id="g-cam"></canvas></div>
+      <div><p class="lbl">Far band profile · dashed = split at u = 64</p><canvas class="plot" id="g-prof"></canvas></div>
+    </div>
+    <div class="subst" id="g-sub"></div>
+    <figcaption>Part of the far-left line has crossed u = 64. What is left in the left half has mass 1.20, so confidence 0.60, which just fails the strict <code>&gt; 0.6</code> test. The GPU decides "only the right line" and shifts the right half's centre of mass (pulled left by the crossed paint) by a fixed span. The far centre lands left of the near centre, so the heading has the <span class="ko">wrong sign</span>.</figcaption>
+  </figure>
+</section>
+
+<section id="fix">
+  <h2>Step 7 · Fix: pair by expected width<span class="sl">reuse the lab's centre block</span></h2>
+  <div class="cols">
+    <pre>GPU today
+split profile at u = 64
+x_l, x_r = centre of mass per half
+<span class="hl">left empty → x_r − span  (wrong on bends)</span></pre>
+    <pre>Fix
+lines = runs above level   (find_lines)
+pair = gap closest to 2·half_px
+<span class="hl">centre = pair midpoint  (any half)</span></pre>
+  </div>
+  <figure class="demo">
+    <div class="subst" id="x-sub"></div>
+    <figcaption>Same frame, same bands, same camera constants. Only the scan and centre logic changes. Both far lines are found and paired by width, wherever they sit in the image.</figcaption>
+  </figure>
+</section>
+
+<section id="verify">
+  <h2>Step 8 · Verification over a full lap<span class="sl">evaluateLap(), 120 frames, noise σ = 8</span></h2>
+  <figure class="demo">
+    <div class="bars" id="v-bars"><span>computing…</span></div>
+    <figcaption>The labs' demo drive (bends up to 0.7 /m). Heading error RMSE against ground truth, on the GPU's own bands. Shorter is better.</figcaption>
+  </figure>
+  <div class="key" id="v-key">…</div>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const ORANGE = "#e8590c", GREEN = "#2f9e44";
+  const base = new TS.SyntheticTrack(), cam = base.camera(), vh = cam.vHorizon;
+  const f2 = (x) => x.toFixed(2), f3 = (x) => x.toFixed(3);
+  const off = Demo.slider("off", (v) => Demo.sgn(v) + " m", run), yaw = Demo.slider("yaw", (v) => Demo.sgn(v) + " rad", run), crv = Demo.slider("crv", (v) => Demo.sgn(v) + " /m", run);
+
+  function run() {
+    const track = base.with({ offset: off(), yaw: yaw(), curvature: crv() }), frame = track.render();
+    const d = new TS.LaneDetector(cam).detect(frame), N = d.near, F = d.far;
+    // step 0
+    Fig.camera(document.getElementById("f-cam"), frame, { midline: true });
+    // step 1
+    const ref = N.lines[0] || F.lines[0];
+    const pu = ref ? Math.floor(ref.u) : 64, pv = 71, [R, G, B] = TS.px(frame, pu, pv);
+    const s = Fig.camera(document.getElementById("m-mask"), TS.maskToFrame(d.mask, 128, 128), { cross: [pu + 0.5, pv + 0.5] });
+    const y = TS.yellownessLab(R / 255, G / 255, B / 255);
+    Demo.set("m-sub", `pixel (u ${pu}, v ${pv}) = RGB ${R} ${G} ${B}\nmin(${f2(R / 255)}, ${f2(G / 255)}) − ${f2(B / 255)} = ${f2(y)}\nmask = clip((${f2(y)} − 0.15)/0.25, 0, 1) = ${f2(TS.clip((y - 0.15) / 0.25, 0, 1))}`);
+    const [r2, g2, b2] = TS.px(frame, 64, 120), y2 = TS.yellownessLab(r2 / 255, g2 / 255, b2 / 255);
+    Demo.set("m-sub2", `pixel (u 64, v 120) = RGB ${r2} ${g2} ${b2}\nmin(${f2(r2 / 255)}, ${f2(g2 / 255)}) − ${f2(b2 / 255)} = ${f2(y2)}  → mask ${f2(TS.clip((y2 - 0.15) / 0.25, 0, 1))}`);
+    // step 2
+    Fig.profile(document.getElementById("s-prof"), [{ data: N.profile, color: "near", fill: true }, { data: F.profile, color: "far", fill: true }], {
+      level: 0.1, xlabel: "u (px)", lines: N.lines.map((l) => ({ u: l.u, color: "near" })).concat(F.lines.map((l) => ({ u: l.u, color: "far" }))),
+    });
+    document.getElementById("s-tab").innerHTML = [["near", N], ["far", F]].map(([n, b]) => b.lines.map((l, i) =>
+      `<tr><td class="${n}">${n}</td><td>${"AB"[i] || i + 1}</td><td>${f2(l.u)}</td><td>${f2(l.mass)}</td><td class="${l.clipped ? "ko" : ""}">${l.clipped ? "yes" : "no"}</td></tr>`).join("") || `<tr><td class="${n}">${n}</td><td colspan="4">no line</td></tr>`).join("");
+    // step 3
+    document.getElementById("c-tab").innerHTML = [["near", N], ["far", F]].map(([n, b]) => {
+      const gap = b.used.length === 2 ? b.used[1].u - b.used[0].u : null, err = gap == null ? null : Math.abs(gap - 2 * b.halfPx) / (2 * b.halfPx);
+      return `<tr><td class="${n}">${n}</td><td>${gap == null ? "—" : f2(gap)}</td><td>${f2(2 * b.halfPx)}</td><td class="${err != null && err < 0.35 ? "ok" : "ko"}">${err == null ? "—" : f3(err)}</td><td>${b.case}</td><td>${b.u == null ? "None" : f2(b.u)}</td><td>${f2(b.confidence)}</td></tr>`;
+    }).join("");
+    const cs = (b) => b.case === "pair" ? `(${f2(b.used[0].u)} + ${f2(b.used[1].u)}) / 2 = ${f2(b.u)}` : `${b.case} → ${b.u == null ? "None" : f2(b.u)}`;
+    Demo.set("c-sub", `near centre = ${cs(N)}\nfar  centre = ${cs(F)}`);
+    // step 4
+    Demo.set("k-sub",
+      `near: v = 71.5   z = 64·0.25/(71.5 − 35.84) = ${f3(d.zNear)} m   x = 0.25·(${f2(N.u ?? 64)} − 64)/(71.5 − 35.84) = ${Demo.sgn(d.xNear, 3)} m\n` +
+      `far:  v = 55.0   z = 64·0.25/(55.0 − 35.84) = ${f3(d.zFar)} m   x = 0.25·(${f2(F.u ?? 64)} − 64)/(55.0 − 35.84) = ${Demo.sgn(d.xFar, 3)} m`);
+    // step 5
+    Fig.detection(document.getElementById("e-cam"), frame, d, cam);
+    Fig.topDown(document.getElementById("e-top"), track, { near: { z: d.zNear, x: d.xNear }, far: { z: d.zFar, x: d.xFar }, zMax: 1.1, xRange: 0.6 });
+    Demo.set("e-sub",
+      `e_lat      = clip(${Demo.sgn(d.xNear, 3)} / 0.30, −1, 1) = ${Demo.sgn(d.eLat, 3)}\n` +
+      `e_heading  = atan2(${Demo.sgn(d.xFar, 3)} − ${Demo.sgn(d.xNear, 3)}, ${f3(d.zFar)} − ${f3(d.zNear)}) = ${Demo.sgn(d.eHeading, 3)} rad = ${Demo.deg(d.eHeading, 2)}\n` +
+      `confidence = (${f2(N.confidence)} + ${f2(F.confidence)}) / 2 = ${f2(d.confidence)}`);
+    const xn = track.centreX(d.zNear), xf = track.centreX(d.zFar), tl = TS.clip(xn / 0.3, -1, 1), th = Math.atan2(xf - xn, d.zFar - d.zNear);
+    const okL = Math.abs(d.eLat - tl) < 0.02, okH = Math.abs(d.eHeading - th) < Math.PI / 180;
+    document.getElementById("e-tab").innerHTML =
+      `<tr><td>e_lat</td><td>${Demo.sgn(d.eLat, 3)}</td><td>${Demo.sgn(tl, 3)}</td><td class="${okL ? "ok" : "ko"}">${Demo.sgn(d.eLat - tl, 3)}</td></tr>` +
+      `<tr><td>e_heading</td><td>${Demo.deg(d.eHeading, 2)}</td><td>${Demo.deg(th, 2)}</td><td class="${okH ? "ok" : "ko"}">${Demo.deg(d.eHeading - th, 2)}</td></tr>`;
+    Demo.set("chain", `${N.lines.length}+${F.lines.length} lines → centres u ${N.u == null ? "None" : f2(N.u)} / ${F.u == null ? "None" : f2(F.u)} px → x ${Demo.sgn(d.xNear, 3)} / ${Demo.sgn(d.xFar, 3)} m → e_lat ${Demo.sgn(d.eLat)}, e_heading ${Demo.deg(d.eHeading)}, confidence ${f2(d.confidence)}`);
+  }
+  run();
+
+  // ---------- failure / fix (fixed scenario: centred car, 0.8 /m right bend)
+  const gpu = new TS.ProdDetector(TS.prodConfigFor(cam)), nr = gpu.rows(gpu.nearRoi), fr = gpu.rows(gpu.farRoi);
+  const vn = (nr[0] + nr[1]) / 2, vf = (fr[0] + fr[1]) / 2, zn = cam.distance(vn), zf = cam.distance(vf);
+  const bendTr = base.with({ curvature: 0.8 }), bendF = bendTr.render();
+  const g = gpu.detect(bendF), th = Math.atan2(bendTr.centreX(zf) - bendTr.centreX(zn), zf - zn);
+  const toU = (x) => 64 + x * 64;
+  function drawFail() {
+    Fig.camera(document.getElementById("g-cam"), bendF, { midline: true, bands: [{ rows: nr, color: "near", centreU: toU(g.near.x), v: vn }, { rows: fr, color: "far", centreU: toU(g.far.x), v: vf }] });
+    Fig.profile(document.getElementById("g-prof"), [{ data: g.far.profile, color: "far", fill: true }], { split: 64, xlabel: "u (px)",
+      lines: [{ u: toU(g.far.xR), color: "#adb5bd", label: "R c.o.m." }, { u: toU(g.far.x), color: ORANGE, label: "GPU centre" }] });
+  }
+  drawFail();
+  Demo.set("g-sub",
+    `far band: mass left = ${f2(g.far.massL)} → conf ${f2(g.far.confL)} (< 0.6, "not seen")   mass right = ${f2(g.far.massR)} → conf ${f2(g.far.confR)}\n` +
+    `case = ${g.far.case}: x_far = x_R − 0.34 = ${f3(g.far.xR)} − 0.340 = ${f3(g.far.x)}   (near x = ${f3(g.near.x)})\n` +
+    `e_heading = ${Demo.deg(g.eHeading, 1)}   truth = ${Demo.deg(th, 1)}   → wrong sign`);
+  const fixDet = new TS.LaneDetector(cam, { nearRows: nr, farRows: fr }), fx = fixDet.detect(bendF);
+  const fl = fx.far.used;
+  Demo.set("x-sub",
+    `far band runs: ${fx.far.lines.map((l) => "u " + f2(l.u)).join(", ")}   expected gap ${f2(2 * fx.far.halfPx)}\n` +
+    `pair gap = ${fl.length === 2 ? f2(fl[1].u - fl[0].u) : "—"} → case ${fx.far.case}, centre u = ${f2(fx.far.u)}\n` +
+    `e_heading = ${Demo.deg(fx.eHeading, 1)}   truth = ${Demo.deg(th, 1)}   → ${Math.abs(fx.eHeading - th) < 0.035 ? "correct" : "off"}`);
+
+  // ---------- verification (deferred so the page paints first)
+  setTimeout(() => {
+    const z = { zNear: zn, zFar: zf };
+    const G = TS.evaluateLap(new TS.ProdDetector(TS.prodConfigFor(cam)), z), F = TS.evaluateLap(new TS.LaneDetector(cam, { nearRows: nr, farRows: fr }), z);
+    const max = Math.max(G.headingRmseDeg, F.headingRmseDeg);
+    document.getElementById("v-bars").innerHTML =
+      `<span>GPU logic (half-split)</span><div class="b" style="width:${(100 * G.headingRmseDeg) / max}%;background:${ORANGE}"></div><b class="mono">${f2(G.headingRmseDeg)}°</b>` +
+      `<span>fix (pair by width)</span><div class="b" style="width:${Math.max(1, (100 * F.headingRmseDeg) / max)}%;background:${GREEN}"></div><b class="mono">${f2(F.headingRmseDeg)}°</b>`;
+    document.getElementById("v-key").innerHTML = `Heading RMSE <b>${f2(G.headingRmseDeg)}° → ${f2(F.headingRmseDeg)}°</b>, lateral RMSE ${f3(G.latRmse)} → ${f3(F.latRmse)}, both bands paired ${Math.round(G.paired * 100)} % → ${Math.round(F.paired * 100)} % of frames. The fix holds over the whole lap, not just one frame.`;
+  }, 50);
+  Fig.onTheme(() => { run(); drawFail(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2 · Scan</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>
+  #seesaw text{font:11px ui-monospace,Menlo,monospace;fill:#4a5058}
+  #seesaw .bar{fill:#fcc419;stroke:#b08900}#seesaw .beam{stroke:#111;stroke-width:3}#seesaw .ful{fill:#e8590c}
+  .lt{font:12px ui-monospace,Menlo,monospace;width:100%}
+</style>
+</head>
+<body data-page="scan">
+<main>
+<h1>2 · Scan</h1>
+<p class="sub">Block 2: squash a thin band of mask rows into one row of numbers, then find the bumps. Those bumps are the lines. Source: <code>labs/lanedet/scan.py</code>, 33 lines.</p>
+
+<section id="collapse">
+  <h2>Band → profile<span class="sl">scan.py · band_profile()</span></h2>
+  <p>We only need to know <i>where across the image</i> the lines are, at two chosen distances ahead. So take the <span class="near">near band</span> (rows 68–74) and average each column down those 7 rows.</p>
+  <figure class="demo" id="cf">
+    <div class="grid2" style="margin:0">
+      <div><p class="lbl">Mask with the near band</p><canvas class="px" id="c-mask"></canvas></div>
+      <div><p class="lbl">Profile: one value per column</p><canvas class="plot tall" id="c-prof"></canvas><p class="small mono" id="c-step"></p></div>
+    </div>
+    <button id="c-play">Pause</button>
+    <figcaption>Each band row is drawn faintly while it is visited (highlighted on the mask). Their average is the bold profile. Then every stretch above the dashed orange <i>level</i> becomes one line, marked with its centroid <code>u</code>.</figcaption>
+  </figure>
+  <div class="key"><code>profile[u] = mean(mask[r0:r1, u])</code>: 128×128 values become <b>128</b>. The band's vertical position fixes <i>how far ahead</i> we look.</div>
+</section>
+
+<section id="why">
+  <h2>Why a band, not one row<span class="sl">noise σ = 45</span></h2>
+  <p>A single row is fragile. One noisy speck becomes an extra "line", and one worn patch hides a real one. Averaging 7 rows dilutes both.</p>
+  <figure class="demo" id="wf">
+    <div class="grid2" style="margin:0">
+      <div><p class="lbl">1 row (row 71)</p><canvas class="plot" id="w-one"></canvas><p class="small mono" id="w-one-n"></p></div>
+      <div><p class="lbl">7-row band (rows 68–74)</p><canvas class="plot" id="w-band"></canvas><p class="small mono" id="w-band-n"></p></div>
+    </div>
+    <button id="w-play">Pause</button>
+    <figcaption>New noise every frame, on the same track. Green = exactly 2 lines found. Orange = a speck survived or a line broke. Measured over 200 frames: one row finds exactly 2 lines in <b>79 %</b> of frames, the band in <b>100 %</b>. The band's centroids also jitter half as much (0.15 px vs 0.27 px standard deviation).</figcaption>
+  </figure>
+  <div class="key">Trade-off: a taller band is <b>more robust</b>, but it smears slanted lines wider. 6–8 rows is the sweet spot used by both detectors.</div>
+</section>
+
+<section id="lines">
+  <h2>Profile → lines<span class="sl">scan.py · find_lines()</span></h2>
+  <p>Walk left to right. Every unbroken run above <code>level</code> is a candidate line. Three numbers describe it:</p>
+  <table class="props">
+    <tr><td>mass</td><td>Σ profile over the run ≈ line width in pixels. Runs with mass &lt; <code>min_mass</code> (1.0) are specks, so they are dropped.</td></tr>
+    <tr><td>u (centroid)</td><td>mass-weighted mean column, <code>Σ p·(c + 0.5) / Σ p</code>. Column <code>c</code> spans [c, c+1).</td></tr>
+    <tr><td>clipped</td><td>the run touches the image border, so part of the line may be out of view.</td></tr>
+  </table>
+  <figure class="demo">
+    <svg id="seesaw" viewBox="0 0 440 200" role="img" aria-label="Weights on a seesaw finding the centroid"></svg>
+    <figcaption>Worked example: run at columns 11–14 with profile 0.2, 0.8, 1.0, 0.4. Mass = 2.4. u = (0.2·11.5 + 0.8·12.5 + 1.0·13.5 + 0.4·14.5) / 2.4 = <b>13.17</b>. The fulcrum slides until the weights balance, and it stops between pixels because the weights are fractional.</figcaption>
+  </figure>
+  <div class="key">The centroid is <b>sub-pixel</b> thanks to the soft mask (page 1). Partly covered edge pixels pull the balance point by fractions of a column.</div>
+</section>
+
+<section id="play">
+  <h2>Move the band, change the level<span class="sl">all find_lines() parameters</span></h2>
+  <figure class="demo">
+    <div class="grid2" style="margin:0">
+      <div><canvas class="px" id="p-mask"></canvas></div>
+      <div><canvas class="plot tall" id="p-prof"></canvas>
+        <table class="lt"><thead><tr><th>line</th><th>u px</th><th>mass</th><th>clipped</th></tr></thead><tbody id="p-lines"></tbody></table></div>
+    </div>
+    <div class="controls">
+      <label for="row">band top row</label><input type="range" id="row" min="38" max="118" value="68"><output for="row"></output>
+      <label for="hgt">band height</label><input type="range" id="hgt" min="1" max="12" value="7"><output for="hgt"></output>
+      <label for="lvl">level</label><input type="range" id="lvl" min="0" max="0.6" step="0.01" value="0.1"><output for="lvl"></output>
+      <label for="mm">min_mass</label><input type="range" id="mm" min="0" max="4" step="0.1" value="1"><output for="mm"></output>
+      <label for="nz">noise σ</label><input type="range" id="nz" min="0" max="40" value="0"><output for="nz"></output>
+      <label for="off">track offset</label><input type="range" id="off" min="-0.3" max="0.3" step="0.01" value="0.05"><output for="off"></output>
+    </div>
+    <figcaption>Move the band down: the lines spread apart, because nearer ground covers more pixels (page 3 explains why). With <i>band height</i> 1 and noise 30, specks appear as lines until <i>min_mass</i> removes them. Push the offset to ±0.3 and one line leaves the image, so the other becomes <i>clipped</i>.</figcaption>
+  </figure>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const W = 128, ORANGE = "#e8590c";
+  // ---------- band -> profile animation
+  const base = new TS.SyntheticTrack({ offset: 0.05, yaw: 0.05, noise: 10 });
+  const mask = TS.labMask(base.render(5)), ROWS = [68, 75];
+  const rowsData = []; for (let r = ROWS[0]; r < ROWS[1]; r++) rowsData.push(mask.slice(r * W, (r + 1) * W));
+  const prof = TS.bandProfile(mask, W, ROWS), lines = TS.findLines(prof);
+  let lastPhase = "";
+  function collapse(t) {
+    const cyc = t % 9, k = Math.min(7, Math.floor(cyc / 0.8) + 1), visiting = cyc < 5.6;
+    const series = rowsData.slice(0, k).map((d, i) => ({ data: d, color: visiting && i === k - 1 ? "near" : "rgba(120,120,120,.3)" }));
+    const showLines = cyc >= 7;
+    if (cyc >= 5.6) series.push({ data: prof, color: "#111", fill: true });
+    Fig.profile(document.getElementById("c-prof"), series, {
+      level: showLines ? 0.1 : null, xlabel: "u (px)",
+      lines: showLines ? lines.map((l) => ({ u: l.u, color: ORANGE, label: "u=" + l.u.toFixed(1) })) : [],
+    });
+    const cv = document.getElementById("c-mask");
+    const s = Fig.camera(cv, TS.maskToFrame(mask, W, 128), { bands: [{ rows: ROWS, color: "near", lines: showLines ? lines : [] }] });
+    if (visiting) { const c = cv.getContext("2d"); c.fillStyle = "rgba(252,196,25,.55)"; c.fillRect(0, (ROWS[0] + k - 1) * s, cv.width, s); }
+    const phase = visiting ? `visiting row ${ROWS[0] + k - 1} (${k} of 7)` : !showLines ? "average of 7 rows = profile" : `runs above level 0.1 → ${lines.length} lines`;
+    if (phase !== lastPhase) { Demo.set("c-step", phase); lastPhase = phase; }
+  }
+  const a1 = Demo.animate(document.getElementById("cf"), collapse, document.getElementById("c-play"));
+
+  // ---------- one row vs band under noise
+  const noisy = new TS.SyntheticTrack({ offset: 0.05, noise: 45 });
+  let seen = -1, stats = { one: 0, band: 0, n: 0 }, cache = null;
+  function why(t) {
+    const i = Math.floor(t * 6);
+    if (i !== seen) {
+      seen = i;
+      const m = TS.labMask(noisy.render(1000 + i));
+      const p1 = TS.bandProfile(m, W, [71, 72]), p7 = TS.bandProfile(m, W, [68, 75]);
+      const l1 = TS.findLines(p1), l7 = TS.findLines(p7);
+      stats.n++; if (l1.length === 2) stats.one++; if (l7.length === 2) stats.band++;
+      cache = { p1, p7, l1, l7 };
+    }
+    const { p1, p7, l1, l7 } = cache;
+    Fig.profile(document.getElementById("w-one"), [{ data: p1, color: "near", fill: true }], { level: 0.1, lines: l1.map((l) => ({ u: l.u, color: l1.length === 2 ? "#2f9e44" : ORANGE })) });
+    Fig.profile(document.getElementById("w-band"), [{ data: p7, color: "near", fill: true }], { level: 0.1, lines: l7.map((l) => ({ u: l.u, color: l7.length === 2 ? "#2f9e44" : ORANGE })) });
+    Demo.set("w-one-n", `${l1.length} lines now · exactly 2 in ${Math.round((100 * stats.one) / stats.n)} % of ${stats.n} frames`);
+    Demo.set("w-band-n", `${l7.length} lines now · exactly 2 in ${Math.round((100 * stats.band) / stats.n)} % of ${stats.n} frames`);
+  }
+  const a2 = Demo.animate(document.getElementById("wf"), why, document.getElementById("w-play"));
+
+  // ---------- seesaw
+  const svg = document.getElementById("seesaw"), NS = "http://www.w3.org/2000/svg";
+  const vals = [0, 0.2, 0.8, 1.0, 0.4, 0], c0 = 10, X = (u) => 50 + (u - c0) * 56, by = 132;
+  const el = (tag, a, parent = svg, text) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (text != null) e.textContent = text; parent.appendChild(e); return e; };
+  const beam = el("g", {});
+  vals.forEach((v, i) => {
+    el("rect", { class: "bar", x: X(c0 + i) + 6, y: by - v * 90, width: 44, height: v * 90 }, beam);
+    if (v) el("text", { x: X(c0 + i) + 28, y: by - v * 90 - 5, "text-anchor": "middle" }, beam, v);
+    el("text", { x: X(c0 + i) + 28, y: 166, "text-anchor": "middle" }, svg, "col " + (c0 + i));
+  });
+  el("line", { class: "beam", x1: X(c0), y1: by, x2: X(c0 + 6), y2: by }, beam);
+  const ful = el("path", { class: "ful" }), lab = el("text", { y: 190, "text-anchor": "middle" });
+  let mass = 0, mom = 0; vals.forEach((v, i) => { mass += v; mom += v * (c0 + i + 0.5); });
+  const target = mom / mass;
+  const a3 = Demo.animate(svg, (t) => {
+    const s = Math.min(1, (t % 6) / 3), e = 1 - (1 - s) ** 3, u = 11 + (target - 11) * e;
+    let tq = 0; vals.forEach((v, i) => (tq += v * (c0 + i + 0.5 - u)));
+    beam.setAttribute("transform", `rotate(${TS.clip(tq * 6, -12, 12).toFixed(2)} ${X(u)} ${by})`);
+    ful.setAttribute("d", `M${X(u)} ${by + 2} l-10 16 h20 z`);
+    lab.setAttribute("x", X(u)); lab.textContent = `u = ${u.toFixed(2)}`;
+  });
+
+  // ---------- playground
+  const f2 = (v) => v.toFixed(2);
+  const row = Demo.slider("row", String, draw), hgt = Demo.slider("hgt", String, draw), lvl = Demo.slider("lvl", f2, draw);
+  const mm = Demo.slider("mm", (v) => v.toFixed(1), draw), nz = Demo.slider("nz", String, draw), off = Demo.slider("off", (v) => f2(v) + " m", draw);
+  function draw() {
+    const m = TS.labMask(base.with({ offset: off(), noise: nz() }).render(11));
+    const rows = [row(), Math.min(128, row() + hgt())], p = TS.bandProfile(m, W, rows), ls = TS.findLines(p, lvl(), mm());
+    Fig.camera(document.getElementById("p-mask"), TS.maskToFrame(m, W, 128), { bands: [{ rows, color: "near", lines: ls }] });
+    Fig.profile(document.getElementById("p-prof"), [{ data: p, color: "near", fill: true }], { level: lvl(), xlabel: "u (px)", lines: ls.map((l, i) => ({ u: l.u, color: l.clipped ? ORANGE : "#111", label: String(i + 1) })) });
+    document.getElementById("p-lines").innerHTML = ls.length
+      ? ls.map((l, i) => `<tr><td>${i + 1}</td><td>${l.u.toFixed(2)}</td><td>${l.mass.toFixed(2)}</td><td class="${l.clipped ? "ko" : ""}">${l.clipped ? "yes" : "no"}</td></tr>`).join("")
+      : `<tr><td colspan="4">no run above the level</td></tr>`;
+  }
+  draw();
+  Fig.onTheme(() => { a1.redraw(); a2.redraw(); a3.redraw(); draw(); });
+})();
+</script>
+</body>
+</html>

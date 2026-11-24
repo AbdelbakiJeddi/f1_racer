@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>4 · Finding the centre</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>
+  #flow rect,#flow path.dia{fill:#fff;stroke:#c9c4b9;stroke-width:1.5}
+  #flow text{font:12px system-ui,sans-serif;fill:#111}
+  #flow .e{stroke:#c9c4b9;stroke-width:2;fill:none}
+  #flow .on rect,#flow .on path.dia{fill:#ebfbee;stroke:#2f9e44;stroke-width:2.5}
+  #flow .e.on{stroke:#2f9e44;stroke-width:3}
+  #flow .lab{font-size:11px;fill:#4a5058}
+  .cands{font:12px ui-monospace,Menlo,monospace;width:100%}
+  .cands tr.win td{background:#ebfbee}
+</style>
+</head>
+<body data-page="centre">
+<main>
+<h1>4 · Finding the centre</h1>
+<p class="sub">Block 4: the scan returns a list of blobs. This block decides which of them are the two boundaries and where the track centre is. Source: <code>labs/lanedet/centre.py</code> (51 lines) and the memory in <code>detector.py</code>.</p>
+
+<section id="rule">
+  <h2>Expected width decides<span class="sl">centre.py · estimate_centre()</span></h2>
+  <p>From the camera model (page 3) we know how wide the track <i>should</i> look on this row: <code>half_px</code> = 42.8 px on the near band. Every blob pair is checked against that width, so a cone between the lines cannot fool it.</p>
+  <figure class="demo" id="scen">
+    <svg id="flow" viewBox="0 0 760 250" role="img" aria-label="Decision flow: pair, single or none"></svg>
+    <div class="chips" id="scen-chips"></div>
+    <div class="grid2" style="margin:0">
+      <div><canvas class="px" id="sc-cam"></canvas></div>
+      <div><canvas class="plot" id="sc-prof"></canvas>
+        <table class="cands"><thead><tr><th>pair</th><th>gap px</th><th>expected</th><th>error</th></tr></thead><tbody id="sc-cands"></tbody></table>
+        <p class="small mono" id="sc-out"></p></div>
+    </div>
+    <figcaption>Pick a scenario. The flowchart lights up in <span class="ok">green</span> along the branch taken. The table lists every blob pair: the gap, the expected gap <code>2·half_px</code>, and the relative error. The best pair under 0.35 wins. <i>Cone</i>: three blobs, but only A–C has the right gap. <i>One line</i>: no pair, so the single-line branch runs.</figcaption>
+  </figure>
+  <div class="key">Pair rule: <code>error = |gap − 2·half_px| / (2·half_px) &lt; 0.35</code>. Confidence = <b>1 − error / 0.35</b>, so a perfect-width pair scores 1.</div>
+</section>
+
+<section id="single">
+  <h2>One line: which side is it?<span class="sl">single-line hypotheses</span></h2>
+  <p>A lone blob could be the <i>left</i> line (centre = u + half_px) or the <i>right</i> line (centre = u − half_px). The detector picks the hypothesis closest to the <b>prior</b>, where it expects the centre to be.</p>
+  <figure class="demo" id="hyp">
+    <canvas class="px" id="hy-cam" style="max-width:420px;margin:0 auto"></canvas>
+    <div class="controls">
+      <label for="hy-off">track offset</label><input type="range" id="hy-off" min="0.0" max="0.45" step="0.01" value="0.38"><output for="hy-off"></output>
+      <label for="hy-pr">prior</label><input type="range" id="hy-pr" min="-0.45" max="0.45" step="0.01" value="0"><output for="hy-pr"></output>
+    </div>
+    <figcaption>The car sits near the right edge, so only the left line is in view. Each blob gives two hypotheses. Filled dot = the one chosen: <span class="ok">green</span> if it is the true centre, <span class="ko">orange</span> if wrong. Hollow grey = rejected. White ring = true centre, yellow triangle = prior. With the prior at 0 (straight ahead, no memory), the wrong hypothesis wins. Move the prior right: past about <b>+0.09 m</b> the choice flips to the correct side.</figcaption>
+  </figure>
+  <div class="key">A single line is ambiguous. The <b>prior</b> resolves it, so the prior must be good.</div>
+</section>
+
+<section id="memory">
+  <h2>Memory: last frame is the best prior<span class="sl">detector.py · prev_x</span></h2>
+  <p>The car moves a few millimetres per frame, so last frame's centre is an excellent guess. The detector stores it as <code>prev_x</code> in <b>metres</b> (one value serves both bands) and converts it to pixels on each row.</p>
+  <figure class="demo" id="drift">
+    <div class="grid2" style="margin:0">
+      <div><p class="lbl">Camera · near band choices</p><canvas class="px" id="dr-cam"></canvas></div>
+      <div><p class="lbl">e_lat as the car drifts past both boundaries</p><canvas class="plot tall" id="dr-plot"></canvas></div>
+    </div>
+    <button id="dr-play">Pause</button>
+    <figcaption>The car slides from the centre past the right line, back, then past the left. Grey = truth (clipped at ±1). <span class="ok">Green</span> = detector with memory. <span class="ko">Orange</span> = same detector, reset every frame. In the shaded zones only one line is visible, and the memory-less detector jumps to the <b>wrong sign</b>: a policy would steer further off the track. The camera shows both choices on the near band.</figcaption>
+  </figure>
+  <div class="key">Without memory, <code>e_lat</code> <b>flips sign</b> past the boundary. With memory it saturates at ±1 on the correct side, which is the signal a controller needs to recover.</div>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const ORANGE = "#e8590c", GREEN = "#2f9e44";
+  const base = new TS.SyntheticTrack(), cam = base.camera(), ROWS = [68, 75], v = TS.LaneDetector.bandRow(ROWS), halfPx = cam.widthPx(0.30, v);
+
+  // ---------- flowchart
+  const svg = document.getElementById("flow");
+  svg.innerHTML = `
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#888"/></marker></defs>
+    <g id="n-in"><rect x="10" y="100" width="120" height="44" rx="8"/><text x="70" y="126" text-anchor="middle">blobs on band</text></g>
+    <g id="n-q1"><path class="dia" d="M270,62 L380,122 L270,182 L160,122 Z"/><text x="270" y="117" text-anchor="middle">a pair with</text><text x="270" y="133" text-anchor="middle">error &lt; 0.35?</text></g>
+    <g id="n-pair"><rect x="440" y="14" width="300" height="56" rx="8"/><text x="590" y="37" text-anchor="middle" font-weight="700">PAIR</text><text x="590" y="56" text-anchor="middle">centre = midpoint · conf = 1 − err/0.35</text></g>
+    <g id="n-q2"><path class="dia" d="M500,130 L580,170 L500,210 L420,170 Z"/><text x="500" y="174" text-anchor="middle">any blob?</text></g>
+    <g id="n-single"><rect x="610" y="96" width="140" height="64" rx="8"/><text x="680" y="118" text-anchor="middle" font-weight="700">SINGLE</text><text x="680" y="136" text-anchor="middle">side nearest prior</text><text x="680" y="152" text-anchor="middle">conf 0.5</text></g>
+    <g id="n-none"><rect x="610" y="180" width="140" height="64" rx="8"/><text x="680" y="202" text-anchor="middle" font-weight="700">NONE</text><text x="680" y="220" text-anchor="middle">reuse last centre</text><text x="680" y="236" text-anchor="middle">conf 0</text></g>
+    <path id="e-in" class="e" d="M130,122 L158,122" marker-end="url(#ah)"/>
+    <path id="e-yes" class="e" d="M300,78 L300,42 L438,42" marker-end="url(#ah)"/><text class="lab" x="308" y="60">yes</text>
+    <path id="e-no" class="e" d="M300,166 L300,170 L418,170" marker-end="url(#ah)"/><text class="lab" x="330" y="163">no</text>
+    <path id="e-y2" class="e" d="M540,150 L540,128 L608,128" marker-end="url(#ah)"/><text class="lab" x="548" y="142">yes</text>
+    <path id="e-n2" class="e" d="M540,190 L540,212 L608,212" marker-end="url(#ah)"/><text class="lab" x="548" y="206">no</text>`;
+  function lightFlow(kase) {
+    const on = { pair: ["n-in", "e-in", "n-q1", "e-yes", "n-pair"], single: ["n-in", "e-in", "n-q1", "e-no", "n-q2", "e-y2", "n-single"], none: ["n-in", "e-in", "n-q1", "e-no", "n-q2", "e-n2", "n-none"] }[kase];
+    svg.querySelectorAll("g[id], path.e").forEach((el) => el.classList.toggle("on", on.includes(el.id)));
+  }
+
+  // ---------- scenarios
+  const SCEN = {
+    "clean pair": () => base.with({ offset: 0.04 }).render(),
+    "cone between lines": () => TS.STRESS.cone(base.with({ offset: 0.04 }).render()),
+    "one line (right worn off)": () => base.with({ offset: 0.08, drawRight: false }).render(),
+    "nothing (glare)": () => TS.STRESS.glare(base.render()),
+  };
+  const scen = Demo.chips("scen-chips", Object.keys(SCEN), "cone between lines", drawScen);
+  function drawScen() {
+    const frame = SCEN[scen()](), mask = TS.labMask(frame), prof = TS.bandProfile(mask, 128, ROWS), lines = TS.findLines(prof);
+    const est = TS.estimateCentre(lines, halfPx, 64);
+    Fig.camera(document.getElementById("sc-cam"), frame, { midline: true, bands: [{ rows: ROWS, color: "near", lines: est.used, centreU: est.u, v }] });
+    Fig.profile(document.getElementById("sc-prof"), [{ data: prof, color: "near", fill: true }], {
+      level: 0.1, xlabel: "u (px)",
+      lines: lines.map((l, i) => ({ u: l.u, color: est.used.includes(l) ? GREEN : ORANGE, label: "ABCD"[i] })).concat(est.u != null ? [{ u: est.u, color: "near", label: "centre" }] : []),
+    });
+    let rows = "";
+    for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) {
+      const gap = lines[j].u - lines[i].u, err = Math.abs(gap - 2 * halfPx) / (2 * halfPx);
+      const win = est.case === "pair" && est.used[0] === lines[i] && est.used[1] === lines[j];
+      rows += `<tr class="${win ? "win" : ""}"><td>${"ABCD"[i]}–${"ABCD"[j]}</td><td>${gap.toFixed(1)}</td><td>${(2 * halfPx).toFixed(1)}</td><td class="${err < 0.35 ? "ok" : "ko"}">${err.toFixed(2)}</td></tr>`;
+    }
+    document.getElementById("sc-cands").innerHTML = rows || `<tr><td colspan="4">${lines.length} blob${lines.length === 1 ? "" : "s"}: no pair to test</td></tr>`;
+    Demo.set("sc-out", `case = ${est.case} · centre u = ${est.u == null ? "None" : est.u.toFixed(1)} · confidence = ${est.confidence.toFixed(2)}`);
+    lightFlow(est.case === "left" || est.case === "right" ? "single" : est.case);
+  }
+  drawScen();
+
+  // ---------- single-line hypotheses
+  const hyOff = Demo.slider("hy-off", (x) => x.toFixed(2) + " m", drawHyp), hyPr = Demo.slider("hy-pr", (x) => Demo.sgn(x) + " m", drawHyp);
+  function drawHyp() {
+    const frame = base.with({ offset: hyOff() }).render(), lines = TS.findLines(TS.bandProfile(TS.labMask(frame), 128, ROWS));
+    const priorU = cam.toPixelU(hyPr(), v), est = TS.estimateCentre(lines, halfPx, priorU);
+    const cv = document.getElementById("hy-cam"), s = Fig.camera(cv, frame, { midline: true, bands: [{ rows: ROWS, color: "near", lines }] }), ctx = cv.getContext("2d");
+    const dot = (u, col, r, fill = true) => { ctx.beginPath(); ctx.arc(u * s, v * s, r, 0, 7); if (fill) { ctx.fillStyle = col; ctx.fill(); } else { ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke(); } };
+    if (est.case === "left" || est.case === "right") {
+      const l = est.used[0], trueU = cam.toPixelU(hyOff(), v);
+      for (const [u, side] of [[l.u + halfPx, "left"], [l.u - halfPx, "right"]]) {
+        const chosen = side === est.case, correct = Math.abs(u - trueU) < 4;
+        if (chosen) dot(u, correct ? GREEN : ORANGE, s * 2.4);
+        else dot(u, "#adb5bd", s * 2.2, false);
+        ctx.fillStyle = "#fff"; ctx.font = `bold ${Math.round(s * 3.4)}px system-ui`; ctx.textAlign = "center";
+        ctx.fillText(`if ${side} line`, TS.clip(u, 16, 112) * s, (v + 7) * s);
+      }
+    }
+    dot(cam.toPixelU(hyOff(), v), "#fff", s * 3, false);
+    ctx.fillStyle = "#fcc419"; ctx.beginPath(); const pu = priorU * s, py = (ROWS[0] - 2) * s; ctx.moveTo(pu, py); ctx.lineTo(pu - s * 2, py - s * 3.4); ctx.lineTo(pu + s * 2, py - s * 3.4); ctx.closePath(); ctx.fill();
+  }
+  drawHyp();
+
+  // ---------- drift with / without memory
+  const N = 240;
+  const offAt = (i) => { const p = i / N; return p < 0.25 ? 0.45 * (p / 0.25) : p < 0.5 ? 0.45 * (1 - (p - 0.25) / 0.25) : p < 0.75 ? -0.45 * ((p - 0.5) / 0.25) : -0.45 * (1 - (p - 0.75) / 0.25); };
+  const good = new TS.LaneDetector(cam), bad = new TS.LaneDetector(cam, { stateful: false }), hist = [];
+  for (let i = 0; i < N; i++) {
+    const o = offAt(i), f = base.with({ offset: o }).render(), dg = good.detect(f), db = bad.detect(f);
+    hist.push({ o, f, truth: TS.clip(o / 0.3, -1, 1), good: dg.eLat, bad: db.eLat, gu: dg.near.u, bu: db.near.u, gl: dg.near.used, bl: db.near.used });
+  }
+  const drCam = document.getElementById("dr-cam"), drPlot = document.getElementById("dr-plot");
+  function drift(t) {
+    const i = Math.floor(t * 30) % N, h = hist[i];
+    const s = Fig.camera(drCam, h.f, { midline: true, bands: [{ rows: ROWS, color: "near", lines: h.gl }] }), ctx = drCam.getContext("2d");
+    for (const [u, col] of [[h.bu, ORANGE], [h.gu, GREEN]]) if (u != null) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(TS.clip(u, -20, 148) * s, v * s, s * 2.2, 0, 7); ctx.fill(); }
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cam.toPixelU(h.o, v) * s, v * s, s * 3, 0, 7); ctx.stroke();
+    const dpr = Fig.sizeCanvas(drPlot), g = drPlot.getContext("2d"), W = drPlot.width, H = drPlot.height, pad = 30 * dpr;
+    const X = (k) => pad + (k / (N - 1)) * (W - pad - 8 * dpr), Y = (e) => H / 2 - e * (H / 2 - 14 * dpr);
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = "#f1efe9"; for (let k = 0; k < N; k++) if (Math.abs(hist[k].o) > 0.3) g.fillRect(X(k), 0, (W - pad) / N + 1, H);
+    g.strokeStyle = "#d9d5cc"; g.lineWidth = dpr; g.beginPath(); g.moveTo(pad, Y(0)); g.lineTo(W, Y(0)); g.stroke();
+    g.fillStyle = "#4a5058"; g.font = `${10 * dpr}px ui-monospace,monospace`; g.fillText("+1", 4 * dpr, Y(1) + 4 * dpr); g.fillText(" 0", 4 * dpr, Y(0) + 4 * dpr); g.fillText("−1", 4 * dpr, Y(-1) + 4 * dpr);
+    const tr = (key, col, w) => { g.strokeStyle = col; g.lineWidth = w * dpr; g.beginPath(); for (let k = 0; k <= i; k++) { const y = Y(hist[k][key]); k ? g.lineTo(X(k), y) : g.moveTo(X(k), y); } g.stroke(); };
+    tr("truth", "rgba(120,120,120,.45)", 6); tr("bad", ORANGE, 2); tr("good", GREEN, 2);
+    g.fillStyle = "#111"; g.beginPath(); g.arc(X(i), Y(h.good), 4 * dpr, 0, 7); g.fill();
+  }
+  const a = Demo.animate(document.getElementById("drift"), drift, document.getElementById("dr-play"));
+  Fig.onTheme(() => { drawScen(); drawHyp(); a.redraw(); });
+})();
+</script>
+</body>
+</html>

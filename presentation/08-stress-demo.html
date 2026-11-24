@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>8 · Stress demo</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>
+  .cond canvas.px{width:calc(50% - 4px);display:inline-block}
+  .cond table{width:100%;font-size:12px;margin:8px 0 4px}.cond td,.cond th{padding:2px 6px}
+  .cond .why{font-size:12px;color:var(--mut);margin:4px 0 0}
+  #status{font:12px ui-monospace,Menlo,monospace;color:var(--mut);min-height:1.2em;margin-top:6px}
+  .controls input:disabled{opacity:.35}
+</style>
+</head>
+<body data-page="stress">
+<main>
+<h1>8 · Stress demo</h1>
+<p class="sub">The detector under the six stress conditions from <code>labs/08_tune.ipynb</code>: what breaks, which block breaks, and which knob fixes it. Every metric is a full 120-frame lap against ground truth, computed live in this page.</p>
+
+<section id="glance">
+  <h2>Six conditions at a glance<span class="sl">default vs tuned ramp</span></h2>
+  <p>Each card shows the stressed frame, its mask, and the lap metrics for the default mask ramp (0.15 → 0.40) and the tuned one (0.05 → 0.25).</p>
+  <div class="grid" id="cards"></div>
+  <p class="small">Heading = e_heading RMSE over the lap. Paired = share of frames with both bands paired. <span class="ko">Orange</span> = heading error over 1.5° or paired under 50 %.</p>
+  <div class="key">Two real failures, both in the <b>mask</b> block: <b>glare</b> washes the paint's yellowness down to ~0.24, and <b>shadow</b> darkens it to ~0.12. Curb, cone and noise are already absorbed by the colour score, the width-based pairing and the mass threshold.</div>
+</section>
+
+<section id="diag">
+  <h2>Diagnosis: the paint sinks below the ramp<span class="sl">near + far profiles · frame 60</span></h2>
+  <p>Look at the band profiles, the input of the scan block. Under glare the bumps collapse towards the level line. Lowering the ramp lifts them back.</p>
+  <figure class="demo">
+    <div class="chips" id="dg-cond"></div>
+    <div class="grid2" style="margin:0">
+      <div><p class="lbl">default ramp 0.15 → 0.40</p><canvas class="plot" id="dg-def"></canvas><p class="small mono" id="dg-def-n"></p></div>
+      <div><p class="lbl">tuned ramp 0.05 → 0.25</p><canvas class="plot" id="dg-tun"></canvas><p class="small mono" id="dg-tun-n"></p></div>
+    </div>
+    <figcaption><span class="near">Blue</span> = near band, <span class="far">violet</span> = far band, dashed orange = level 0.1, profiles shown up to 0.6. <b>Glare, default ramp</b>: near bumps peak at 0.18 and survive, but the thinner far bumps have mass 0.23 and 0.11, below <code>min_mass</code> 1.0. The far centre freezes and the heading goes wrong. Tuned: far masses ≈ 2, both lines back. <b>Shadow</b> (right half darkened): the near-right line is lost with the default ramp and recovered with the tuned one.</figcaption>
+  </figure>
+  <div class="key">Lowering the ramp has a price: specks saturate sooner. <b>0.05 → 0.25</b> is the setting that stays under 2.5° heading error in glare, shadow and noise σ = 30 together.</div>
+</section>
+
+<section id="sandbox">
+  <h2>Live sandbox<span class="sl">every LaneDetector parameter</span></h2>
+  <p>Pick a condition and a detector, then move any parameter. The lap is re-evaluated on every change, and the replay below shows it frame by frame.</p>
+  <figure class="demo" id="box">
+    <div class="chips" id="conds"></div>
+    <div class="chips" id="dets"></div>
+    <div class="grid2" style="margin:0">
+      <div><canvas class="px" id="bx-cam"></canvas></div>
+      <div><p class="lbl">e_heading over the lap · grey = truth · <span class="far">violet = detected</span></p><canvas class="plot tall" id="bx-plot"></canvas></div>
+    </div>
+    <div class="readout"><div><span>e_lat RMSE</span><b id="m-lat">—</b></div><div><span>e_heading RMSE</span><b id="m-head">—</b></div><div><span>both bands paired</span><b id="m-pair">—</b></div><div><span>any line seen</span><b id="m-seen">—</b></div></div>
+    <div id="status" aria-live="polite"></div>
+    <div class="controls">
+      <label for="lo">mask_low</label><input type="range" id="lo" min="0" max="0.3" step="0.01" value="0.15"><output for="lo"></output>
+      <label for="hi">mask_high</label><input type="range" id="hi" min="0.1" max="0.6" step="0.01" value="0.40"><output for="hi"></output>
+      <label for="lvl">line_level</label><input type="range" id="lvl" min="0.02" max="0.5" step="0.01" value="0.10"><output for="lvl"></output>
+      <label for="mm">min_mass</label><input type="range" id="mm" min="0" max="4" step="0.1" value="1.0"><output for="mm"></output>
+      <label for="tol">tolerance</label><input type="range" id="tol" min="0.05" max="0.8" step="0.01" value="0.35"><output for="tol"></output>
+      <label for="zn">near band z</label><input type="range" id="zn" min="0.30" max="0.70" step="0.01" value="0.45"><output for="zn"></output>
+      <label for="thr">GPU threshold</label><input type="range" id="thr" min="0.05" max="0.6" step="0.01" value="0.25"><output for="thr"></output>
+      <label for="mem">memory</label><input type="checkbox" id="mem" checked style="justify-self:start"><output for="mem">on</output>
+    </div>
+    <button id="bx-play">Pause</button> <button id="tuned">Apply tuned ramp</button> <button id="reset">Reset defaults</button>
+    <figcaption>Things worth seeing: glare with the tuned ramp (29° → 1.1°), noise σ = 30 with ramp 0.04 → 0.15 (specks survive, 9° error), glare with memory off (e_lat error jumps ×15), and the GPU logic on <i>clean</i> (22.7°, the bend failure from page 6). Only <i>GPU threshold</i> applies to the GPU logic.</figcaption>
+  </figure>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const ORANGE = "#e8590c", base = new TS.SyntheticTrack(), cam = base.camera(), N = 120, S = TS.STRESS;
+  const CONDS = { clean: null, shadow: S.shadow, glare: S.glare, "red curb": S.redCurb, cone: S.cone, "noise σ30": (f, i) => S.noise(f, i) };
+  if (typeof S.worn === "function") CONDS["worn paint"] = (f, i) => S.worn(f, i);
+  const WHY = {
+    clean: "Baseline.", shadow: "Mask: right line too dim → pairs lost.", glare: "Mask: paint washed out → lines lost.",
+    "red curb": "Handled by the colour score (min).", cone: "Handled by pairing by width.", "noise σ30": "Handled by the band + min_mass.", "worn paint": "Gaps in the paint.",
+  };
+  const labZ = (d) => ({ zNear: cam.distance(TS.LaneDetector.bandRow(d.nearRows)), zFar: cam.distance(TS.LaneDetector.bandRow(d.farRows)) });
+  const lab = (o) => { const d = new TS.LaneDetector(cam, o); return [d, labZ(d)]; };
+  const SI = 60, sample = base.with(Object.assign({ noise: 8 }, TS.driveState(SI, N))).render(SI);  // frame with both lines in view
+
+  // ---------- cards (filled one by one so the page stays responsive)
+  const cards = document.getElementById("cards"), names = Object.keys(CONDS);
+  names.forEach((n) => {
+    const c = document.createElement("div"); c.className = "card cond"; c.id = "card-" + names.indexOf(n);
+    c.innerHTML = `<h4>${n}</h4><canvas class="px"></canvas> <canvas class="px"></canvas><table><tr><th></th><th>heading</th><th>paired</th></tr><tr><td>default</td><td>…</td><td>…</td></tr><tr><td>tuned</td><td>…</td><td>…</td></tr></table><p class="why">${WHY[n] || ""}</p>`;
+    cards.appendChild(c);
+    const f = CONDS[n] ? CONDS[n](sample, SI) : sample, [cv1, cv2] = c.querySelectorAll("canvas");
+    Fig.camera(cv1, f, {}); Fig.camera(cv2, TS.maskToFrame(TS.labMask(f), 128, 128), {});
+  });
+  let k = 0;
+  (function next() {
+    if (k >= names.length) return;
+    const n = names[k], c = document.getElementById("card-" + k), cells = c.querySelectorAll("td");
+    const cell = (r, i) => `${r.headingRmseDeg.toFixed(2)}°`;
+    for (const [row, o] of [[0, {}], [1, { maskLow: 0.05, maskHigh: 0.25 }]]) {
+      const [d, z] = lab(o), r = TS.evaluateLap(d, z, { n: N, transform: CONDS[n] });
+      const tdH = cells[row * 3 + 1], tdP = cells[row * 3 + 2];
+      tdH.textContent = cell(r); tdP.textContent = Math.round(r.paired * 100) + " %";
+      tdH.className = r.headingRmseDeg > 1.5 ? "ko" : "ok"; tdP.className = r.paired < 0.5 ? "ko" : "ok";
+    }
+    k++; setTimeout(next, 0);
+  })();
+
+  // ---------- diagnosis profiles
+  const DG = { clean: null, glare: S.glare, shadow: S.shadow };
+  const dgc = Demo.chips("dg-cond", Object.keys(DG), "glare", drawDiag);
+  function drawDiag() {
+    const f = DG[dgc()] ? DG[dgc()](sample) : sample;
+    for (const [id, lo, hi] of [["dg-def", 0.15, 0.4], ["dg-tun", 0.05, 0.25]]) {
+      const m = TS.labMask(f, lo, hi), pn = TS.bandProfile(m, 128, [68, 75]), pf = TS.bandProfile(m, 128, [52, 58]);
+      const ln = TS.findLines(pn), lf = TS.findLines(pf), mark = (ls, tag) => ls.map((l) => ({ u: l.u, color: ls.length === 2 ? "#2f9e44" : ORANGE, label: tag }));
+      Fig.profile(document.getElementById(id), [{ data: pn, color: "near", fill: true }, { data: pf, color: "far", fill: true }], { ymax: 0.6, level: 0.1, lines: mark(ln, "near").concat(mark(lf, "far")) });
+      Demo.set(id + "-n", `near: ${ln.length} lines · far: ${lf.length} lines`);
+    }
+  }
+  drawDiag();
+
+  // ---------- sandbox
+  const status = document.getElementById("status"), mem = document.getElementById("mem"), memOut = document.querySelector('output[for="mem"]');
+  const cond = Demo.chips("conds", names, "glare", schedule), kind = Demo.chips("dets", ["lab", "GPU logic"], "lab", schedule);
+  const f2 = (v) => v.toFixed(2);
+  const sl = { lo: Demo.slider("lo", f2, schedule), hi: Demo.slider("hi", f2, schedule), lvl: Demo.slider("lvl", f2, schedule), mm: Demo.slider("mm", (v) => v.toFixed(1), schedule),
+    tol: Demo.slider("tol", f2, schedule), zn: Demo.slider("zn", (v) => f2(v) + " m", schedule), thr: Demo.slider("thr", f2, schedule) };
+  mem.addEventListener("change", () => { memOut.textContent = mem.checked ? "on" : "off"; schedule(); });
+  const setVals = (o) => { for (const [id, v] of Object.entries(o)) { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event("input")); } };
+  document.getElementById("tuned").addEventListener("click", () => setVals({ lo: 0.05, hi: 0.25 }));
+  document.getElementById("reset").addEventListener("click", () => { setVals({ lo: 0.15, hi: 0.4, lvl: 0.1, mm: 1, tol: 0.35, zn: 0.45, thr: 0.25 }); mem.checked = true; memOut.textContent = "on"; schedule(); });
+
+  function make() {
+    if (kind() === "lab") {
+      const v = cam.rowAt(sl.zn());
+      return lab({ maskLow: sl.lo(), maskHigh: Math.max(sl.hi(), sl.lo() + 0.01), lineLevel: sl.lvl(), minMass: sl.mm(), tolerance: sl.tol(), nearRows: [Math.round(v - 3.5), Math.round(v + 3.5)], stateful: mem.checked });
+    }
+    const g = new TS.ProdDetector(Object.assign(TS.prodConfigFor(cam), { yellowThreshold: sl.thr() })), nr = g.rows(g.nearRoi), fr = g.rows(g.farRoi);
+    return [g, { zNear: cam.distance((nr[0] + nr[1]) / 2), zFar: cam.distance((fr[0] + fr[1]) / 2) }];
+  }
+  let result = null, live = null, timer = 0;
+  function schedule() {
+    const gpu = kind() !== "lab";
+    ["lo", "hi", "lvl", "mm", "tol", "zn", "mem"].forEach((id) => (document.getElementById(id).disabled = gpu));
+    document.getElementById("thr").disabled = !gpu;
+    status.textContent = "evaluating lap…"; clearTimeout(timer); timer = setTimeout(evaluate, 120);
+  }
+  function evaluate() {
+    const [d, z] = make(), t0 = performance.now();
+    result = TS.evaluateLap(d, z, { n: N, transform: CONDS[cond()] });
+    status.textContent = `${cond()} · ${kind()} · ${Math.round(performance.now() - t0)} ms`;
+    Demo.set("m-lat", result.latRmse.toFixed(3)); Demo.set("m-head", result.headingRmseDeg.toFixed(2) + "°");
+    Demo.set("m-pair", Math.round(result.paired * 100) + " %"); Demo.set("m-seen", Math.round(result.seen * 100) + " %");
+    const [ld] = make(); live = { det: ld, gpu: kind() !== "lab", i: -1 };
+    anim.redraw();
+  }
+  const camC = document.getElementById("bx-cam"), plot = document.getElementById("bx-plot");
+  function draw(i) {
+    if (!result || !live) return;
+    if (i < live.i && live.det.reset) live.det.reset();
+    let f = base.with(Object.assign({ noise: 8 }, TS.driveState(i, N))).render(i); if (CONDS[cond()]) f = CONDS[cond()](f, i);
+    const d = live.det.detect(f); live.i = i;
+    if (live.gpu) {
+      const toU = (x) => 64 + x * 64, row = (r) => (r[0] + r[1]) / 2;
+      Fig.camera(camC, f, { midline: true, bands: [{ rows: d.near.rows, color: "near", centreU: toU(d.near.x), v: row(d.near.rows) }, { rows: d.far.rows, color: "far", centreU: toU(d.far.x), v: row(d.far.rows) }] });
+    } else Fig.detection(camC, f, d, cam);
+    const dpr = Fig.sizeCanvas(plot), g = plot.getContext("2d"), W = plot.width, H = plot.height, lim = 40, pad = 36 * dpr;
+    const X = (k) => pad + (k / (N - 1)) * (W - pad - 6 * dpr), Y = (deg) => H / 2 - (TS.clip(deg, -lim, lim) / lim) * (H / 2 - 10 * dpr);
+    g.clearRect(0, 0, W, H);
+    g.strokeStyle = "#d9d5cc"; g.lineWidth = dpr; g.beginPath(); g.moveTo(pad, Y(0)); g.lineTo(W, Y(0)); g.stroke();
+    g.fillStyle = "#4a5058"; g.font = `${10 * dpr}px ui-monospace,monospace`; g.fillText("+40°", 2, Y(lim) + 8 * dpr); g.fillText("−40°", 2, Y(-lim));
+    const tr = (key, col, w) => { g.strokeStyle = col; g.lineWidth = w * dpr; g.beginPath(); result.trace.forEach((p, k) => { const y = Y((p[key] * 180) / Math.PI); k ? g.lineTo(X(k), y) : g.moveTo(X(k), y); }); g.stroke(); };
+    tr("tHeading", "rgba(120,120,120,.45)", 5); tr("eHeading", "#7950f2", 1.8);
+    g.strokeStyle = "#111"; g.beginPath(); g.moveTo(X(i), 0); g.lineTo(X(i), H); g.stroke();
+  }
+  const anim = Demo.animate(document.getElementById("box"), (t) => draw(Math.floor(t * 12) % N), document.getElementById("bx-play"));
+  schedule();
+  Fig.onTheme(() => { drawDiag(); anim.redraw(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How the F1 racer finds the track</title>
+<link rel="stylesheet" href="assets/demo.css">
+</head>
+<body data-page="home">
+<main>
+<h1>How the F1 racer finds the track</h1>
+<p class="sub">Demo of the vision pipeline in <code>f1_racer</code>: one 128×128 camera frame in, three steering numbers out. Every figure runs the project's own detector code, ported to the browser and checked against the Python.</p>
+
+<section id="live">
+  <h2>The pipeline, live<span class="sl">synthetic drive · labs/helpers/vision_preview.py</span></h2>
+  <p>The car weaves while the track bends left and right. On every frame the detector finds both yellow lines on two horizontal bands, takes their midpoints, and turns them into errors.</p>
+  <figure class="demo" id="hero">
+    <div class="legend"><span><i style="background:var(--near)"></i>near band</span><span><i style="background:var(--far)"></i>far band</span><span><i style="background:var(--yellow)"></i>estimated centreline</span><span><i style="background:#fff;border:1px dashed #888"></i>true centre (top view)</span></div>
+    <div class="pair">
+      <div><p class="lbl">Camera frame + detector overlay</p><canvas class="px" id="h-cam"></canvas></div>
+      <div><p class="lbl">Same moment, seen from above</p><canvas class="px map" id="h-top"></canvas></div>
+    </div>
+    <div class="readout">
+      <div><span>e_lat</span><b id="h-el">—</b></div>
+      <div><span>e_heading</span><b id="h-eh">—</b></div>
+      <div><span>confidence</span><b id="h-cf">—</b></div>
+      <div><span>near / far case</span><b id="h-cs">—</b></div>
+    </div>
+    <button id="h-play">Pause</button>
+    <figcaption>White crosses = lines found on each band. Dots = track centre per band. The yellow segment joins them, and its angle is <code>e_heading</code>. In the top view, the dots should sit on the dashed true centre.</figcaption>
+  </figure>
+  <div class="key">The driving policy <b>never sees pixels</b>. It receives three numbers from this detector: <code>e_lat</code> (where the centre is), <code>e_heading</code> (where the track is going) and <code>confidence</code> (how sure the detector is).</div>
+</section>
+
+<section id="blocks">
+  <h2>Five blocks, one frame<span class="sl">labs/lanedet/*.py</span></h2>
+  <p>The same frame as above, opened up. Each card shows what one block hands to the next.</p>
+  <div class="grid" id="strip">
+    <div class="card"><h4><span class="step">0</span>Frame</h4><canvas class="px" id="s-frame"></canvas><p class="small">128×128 RGB, from the car's nose camera.</p></div>
+    <div class="card"><h4><span class="step">1</span>Mask</h4><canvas class="px" id="s-mask"></canvas><p class="small">Per pixel: how much it looks like yellow paint, 0…1.</p></div>
+    <div class="card"><h4><span class="step">2</span>Scan</h4><canvas class="plot" id="s-prof"></canvas><p class="small">Each band averaged into a 1-D profile. Bumps = lines.</p></div>
+    <div class="card"><h4><span class="step">3–4</span>Centre → metres</h4><canvas class="px map" id="s-top"></canvas><p class="small">Line midpoint per band, converted to metres on the ground.</p></div>
+    <div class="card"><h4><span class="step">5</span>Errors</h4>
+      <table class="props" style="width:100%"><tr><td>e_lat</td><td id="s-el">—</td></tr><tr><td>e_heading</td><td id="s-eh">—</td></tr><tr><td>confidence</td><td id="s-cf">—</td></tr></table>
+      <p class="small">The first three numbers of the policy's observation.</p></div>
+  </div>
+  <div class="key">Order of the data: <b>mask → scan → centre → camera → errors</b>. No neural network: each block is a few lines of arithmetic, cheap enough for thousands of simulated cars per step.</div>
+</section>
+
+<section id="obs">
+  <h2>What the policy receives<span class="sl">f1_racer_rl/…/mdp/observations.py · vision_track_state</span></h2>
+  <p>The actor network gets a 7-number observation every control step. Three come from the camera and four from the car's own sensors.</p>
+  <table class="props">
+    <tr><th>#</th><th>value</th><th>source</th><th>meaning</th></tr>
+    <tr><td class="hl">0</td><td class="hl">e_lat</td><td>camera</td><td>track centre sideways, ±1 = on a boundary, + = right</td></tr>
+    <tr><td class="hl">1</td><td class="hl">e_heading</td><td>camera</td><td>track direction vs car nose, rad, + = heads right</td></tr>
+    <tr><td class="hl">2</td><td class="hl">confidence</td><td>camera</td><td>0 = nothing seen … 1 = both lines clear</td></tr>
+    <tr><td>3–5</td><td>v<sub>x</sub>, v<sub>y</sub>, ω<sub>z</sub></td><td>vehicle</td><td>body velocities, yaw rate</td></tr>
+    <tr><td>6</td><td>steer</td><td>vehicle</td><td>front knuckle angle</td></tr>
+  </table>
+  <div class="key">The critic sees privileged ground truth during training. The actor sees only what a real car can compute. If the detector lies, <b>the policy steers wrong</b>, and no amount of PPO training fixes that.</div>
+</section>
+
+<section id="two">
+  <h2>Two implementations<span class="sl">lab vs production</span></h2>
+  <div class="grid2">
+    <div class="card"><h4>Lab detector · NumPy</h4><p class="small"><code>labs/lanedet/</code>, built block by block in <code>labs/01–08*.ipynb</code>. Readable, one frame at a time, finds every line and pairs them by expected width. Pages 1–5 follow this one.</p></div>
+    <div class="card"><h4>GPU detector · PyTorch</h4><p class="small"><code>src/leatherback_racer/vision/track_detector.py</code>. Same five blocks on a batch of N cars at once, used during RL training. Simpler scan and centre steps. Page 6 opens it up.</p></div>
+  </div>
+</section>
+
+<section id="map">
+  <h2>Pages<span class="sl">each page works on its own</span></h2>
+  <div class="grid">
+    <a class="card" href="01-mask.html" style="color:inherit;text-decoration:none"><h4>1 · Mask</h4><p class="small">A colour score that lights paint and ignores asphalt, sky and red curbs.</p></a>
+    <a class="card" href="02-scan.html" style="color:inherit;text-decoration:none"><h4>2 · Scan</h4><p class="small">Rows → profile → lines, with sub-pixel centroids.</p></a>
+    <a class="card" href="03-camera.html" style="color:inherit;text-decoration:none"><h4>3 · Camera</h4><p class="small">Pinhole geometry: any pixel to metres on the ground.</p></a>
+    <a class="card" href="04-centre.html" style="color:inherit;text-decoration:none"><h4>4 · Centre</h4><p class="small">Pair, single or none, and why memory matters.</p></a>
+    <a class="card" href="05-errors.html" style="color:inherit;text-decoration:none"><h4>5 · Errors</h4><p class="small">e_lat, e_heading as a chord, and confidence.</p></a>
+    <a class="card" href="06-gpu-detector.html" style="color:inherit;text-decoration:none"><h4>6 · GPU detector</h4><p class="small">The batched PyTorch version, its constants, and its bend failure.</p></a>
+    <a class="card" href="07-worked-example.html" style="color:inherit;text-decoration:none"><h4>7 · Worked example</h4><p class="small">One frame through every block with all numbers, then failure → fix → verification.</p></a>
+    <a class="card" href="08-stress-demo.html" style="color:inherit;text-decoration:none"><h4>8 · Stress demo</h4><p class="small">Shadow, glare, curb, cone, noise: what breaks and what fixes it.</p></a>
+  </div>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const base = new TS.SyntheticTrack({ noise: 4 }), cam = base.camera(), det = new TS.LaneDetector(cam);
+  let shown = -1, cur = null;
+  function paint() {
+    if (!cur) return;
+    const { frame, track, d } = cur, pts = { near: { z: d.zNear, x: d.xNear }, far: { z: d.zFar, x: d.xFar } };
+    Fig.detection(document.getElementById("h-cam"), frame, d, cam);
+    Fig.topDown(document.getElementById("h-top"), track, Object.assign({ label: false }, pts));
+    Demo.set("h-el", Demo.sgn(d.eLat)); Demo.set("h-eh", Demo.deg(d.eHeading)); Demo.set("h-cf", d.confidence.toFixed(2));
+    Demo.set("h-cs", d.near.case + " / " + d.far.case);
+    // strip
+    Fig.camera(document.getElementById("s-frame"), frame, {});
+    Fig.camera(document.getElementById("s-mask"), TS.maskToFrame(d.mask, 128, 128), { bands: [{ rows: d.near.rows, color: "near" }, { rows: d.far.rows, color: "far" }] });
+    Fig.profile(document.getElementById("s-prof"), [{ data: d.near.profile, color: "near" }, { data: d.far.profile, color: "far" }], { xtick: 64 });
+    Fig.topDown(document.getElementById("s-top"), track, Object.assign({ label: false, chord: false, zMax: 1.1, xRange: 0.6 }, pts));
+    Demo.set("s-el", Demo.sgn(d.eLat)); Demo.set("s-eh", Demo.deg(d.eHeading)); Demo.set("s-cf", d.confidence.toFixed(2));
+  }
+  Demo.animate(document.querySelector("main"), (t) => {
+    const i = Math.floor(t * 12) % 150;
+    if (i === shown && cur) return;
+    if (i < shown) det.reset();
+    shown = i;
+    const track = base.with(TS.driveState(i)), frame = track.render(i);
+    cur = { frame, track, d: det.detect(frame) };
+    paint();
+  }, document.getElementById("h-play"));
+  Fig.onTheme(paint);
+})();
+</script>
+</body>
+</html>

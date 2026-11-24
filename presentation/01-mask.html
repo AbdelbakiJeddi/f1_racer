@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1 · Colour mask</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>
+  .swatch{height:74px;border-radius:8px;border:1px solid var(--line)}
+  .bars{display:grid;grid-template-columns:9.5rem 1fr 3.2rem;gap:6px 10px;align-items:center;font:12px ui-monospace,Menlo,monospace;margin-top:12px}
+  .bar{height:12px;background:#f1efe9;border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:#111;transition:width .15s}
+  .bar.m i{background:var(--yellow)}
+  .subst{font:12px ui-monospace,Menlo,monospace;color:var(--mut);margin-top:8px;white-space:pre-wrap}
+</style>
+</head>
+<body data-page="mask">
+<main>
+<h1>1 · Colour mask</h1>
+<p class="sub">Block 1 of the detector: give every pixel a score that is high on yellow paint and zero everywhere else. Source: <code>labs/lanedet/mask.py</code>.</p>
+
+<section id="score">
+  <h2>Yellow = red + green, no blue<span class="sl">mask.py · yellowness()</span></h2>
+  <p>Paint is about (255, 209, 0). Asphalt is (31, 31, 31). Grey surfaces have equal channels, and yellow has high red <i>and</i> green with no blue. One subtraction separates them: <code>min(R, G) − B</code>.</p>
+  <figure class="demo" id="lab">
+    <div class="chips" id="presets"></div>
+    <div class="pair">
+      <div class="swatch" id="sw"></div>
+      <div class="controls" style="margin-top:0">
+        <label for="r">R</label><input type="range" id="r" min="0" max="255" value="255"><output for="r"></output>
+        <label for="g">G</label><input type="range" id="g" min="0" max="255" value="209"><output for="g"></output>
+        <label for="b">B</label><input type="range" id="b" min="0" max="255" value="0"><output for="b"></output>
+      </div>
+    </div>
+    <div class="bars">
+      <span>min(R,G) − B</span><div class="bar"><i id="b1"></i></div><b id="v1"></b>
+      <span>→ lab mask</span><div class="bar m"><i id="b2"></i></div><b id="v2"></b>
+      <span>R + G − 2B</span><div class="bar"><i id="b3"></i></div><b id="v3"></b>
+      <span>→ GPU mask</span><div class="bar m"><i id="b4"></i></div><b id="v4"></b>
+    </div>
+    <div class="subst" id="subst"></div>
+    <figcaption>Pick a preset or drag the channels. The lab detector uses <code>min(R,G) − B</code>. The GPU detector (page 6) uses <code>R + G − 2B</code>. Compare them on <i>red curb</i> and <i>orange cone</i>.</figcaption>
+  </figure>
+  <div class="key"><code>min</code> means a pixel scores only if red <b>and</b> green are both high. Red curb (200, 30, 30): lab score <b>0</b>, GPU score <b>0.67</b>, so its GPU mask is 0.55, which reads as paint.</div>
+</section>
+
+<section id="map">
+  <h2>Which colours survive?<span class="sl">both formulas over every R, G</span></h2>
+  <p>Each map covers every red (→) and green (↑) value at a fixed blue. A colour that survives is drawn in its own colour with brightness = its mask value. A rejected colour is black.</p>
+  <figure class="demo" id="cmap">
+    <div class="pair">
+      <div><p class="lbl">lab · min(R,G) − B, ramp 0.15 → 0.40</p><canvas class="px" id="m-lab" style="background:#000"></canvas></div>
+      <div><p class="lbl">GPU · R + G − 2B, ramp 0.25 → 1</p><canvas class="px" id="m-gpu" style="background:#000"></canvas></div>
+    </div>
+    <div class="controls"><label for="mb">blue B</label><input type="range" id="mb" min="0" max="120" value="0"><output for="mb"></output></div>
+    <figcaption>Markers: <b>P</b> paint, <b>C</b> orange cone, <b>R</b> red curb (drawn at their R, G). At B = 0 the lab map keeps only the square where R <i>and</i> G are both above 0.15 (top right). The GPU map keeps everything above the line R + G = 0.25, including pure reds (bottom right, where the curb R sits) and pure greens (top left). Raise blue and both regions shrink, because blue turns a colour grey or white.</figcaption>
+  </figure>
+  <div class="key">Neither formula rejects the orange cone (C sits inside both regions). <b>The mask is not the last defence</b>. The centre block (page 4) rejects the cone because it is not the right distance from the other line.</div>
+</section>
+
+<section id="ramp">
+  <h2>From score to mask: a ramp, not a cliff<span class="sl">mask.py · yellow_mask(low, high)</span></h2>
+  <p>Below <code>low</code> the mask is 0 (noise floor). Above <code>high</code> it is 1. In between it rises linearly. Edge pixels, only partly covered by paint, land on the slope and count partly. That moves line centres by fractions of a pixel (page 2).</p>
+  <figure class="demo" id="rampfig">
+    <canvas class="plot tall" id="rp"></canvas>
+    <div class="controls">
+      <label for="lo">low</label><input type="range" id="lo" min="0" max="0.4" step="0.01" value="0.15"><output for="lo"></output>
+      <label for="hi">high</label><input type="range" id="hi" min="0.05" max="0.8" step="0.01" value="0.40"><output for="hi"></output>
+    </div>
+    <figcaption>Orange = the ramp. Dots = real surfaces at their yellowness. With the default ramp, <i>paint in glare</i> (0.24) only reaches mask 0.37 and <i>paint in shadow</i> (0.12) is lost at 0. Slide <code>low</code> to 0.05 and <code>high</code> to 0.25, the tuned values from <code>labs/08_tune.ipynb</code>: glare goes to 0.97 and shadow to 0.36.</figcaption>
+  </figure>
+  <div class="key">The ramp is the main tuning knob for lighting. <b>Lower ramp</b> = sees dim paint, but lets more noise through.</div>
+</section>
+
+<section id="frame">
+  <h2>The whole frame<span class="sl">same formulas, 16 384 pixels</span></h2>
+  <p>The mask is computed row by row over the frame. Hover the camera image to read any pixel.</p>
+  <figure class="demo" id="sweep">
+    <div class="chips" id="conds"></div>
+    <div class="chips" id="formula"></div>
+    <div class="pair">
+      <div><p class="lbl">Camera frame</p><canvas class="px" id="f-cam"></canvas></div>
+      <div><p class="lbl">Mask (white = 1)</p><canvas class="px" id="f-mask"></canvas></div>
+    </div>
+    <div class="readout"><div><span>pixel u, v</span><b id="h-uv">—</b></div><div><span>RGB</span><b id="h-rgb">—</b></div><div><span>score</span><b id="h-s">—</b></div><div><span>mask</span><b id="h-m">—</b></div></div>
+    <button id="replay">Pause</button>
+    <figcaption><i>red curb</i>: the GPU formula leaves a bright block bottom-left, the lab formula does not. <i>cone</i>: both light up. <i>glare</i>: the default lab ramp loses most of the paint.</figcaption>
+  </figure>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const labM = (y, lo = 0.15, hi = 0.40) => TS.clip((y - lo) / (hi - lo), 0, 1);
+  const gpuM = (c) => TS.clip(Math.max(c - 0.25, 0) / 0.75, 0, 1);
+
+  // ---------- pixel lab
+  const PRESETS = { paint: [255, 209, 0], asphalt: [31, 31, 31], sky: [62, 68, 82], "red curb": [200, 30, 30],
+    "orange cone": [255, 150, 0], "paint in glare": [246, 232, 170], "paint in shadow": [38, 31, 0], white: [240, 240, 240] };
+  const r = Demo.slider("r", String, drawLab), g = Demo.slider("g", String, drawLab), b = Demo.slider("b", String, drawLab);
+  Demo.chips("presets", Object.keys(PRESETS), "paint", (n) => {
+    ["r", "g", "b"].forEach((id, k) => { const el = document.getElementById(id); el.value = PRESETS[n][k]; el.dispatchEvent(new Event("input")); });
+  });
+  const bar = (id, v, out) => { document.getElementById(id).style.width = TS.clip(v, 0, 1) * 100 + "%"; Demo.set(out, v.toFixed(2)); };
+  function drawLab() {
+    const R = r() / 255, G = g() / 255, B = b() / 255;
+    document.getElementById("sw").style.background = `rgb(${r()},${g()},${b()})`;
+    const y = TS.yellownessLab(R, G, B), c = TS.yellownessProd(R, G, B);
+    bar("b1", y, "v1"); bar("b2", labM(y), "v2"); bar("b3", c, "v3"); bar("b4", gpuM(c), "v4");
+    Demo.set("subst", `min(${R.toFixed(2)}, ${G.toFixed(2)}) − ${B.toFixed(2)} = ${y.toFixed(2)}\n${R.toFixed(2)} + ${G.toFixed(2)} − 2·${B.toFixed(2)} = ${(R + G - 2 * B).toFixed(2)} → clamp → ${c.toFixed(2)}`);
+  }
+  drawLab();
+
+  // ---------- colour survival maps
+  const mb = Demo.slider("mb", String, drawMaps);
+  const MARKS = [["P", 255, 209], ["C", 255, 150], ["R", 200, 30]];
+  function drawMaps() {
+    const B = mb() / 255;
+    for (const [id, f] of [["m-lab", (R, G) => labM(TS.yellownessLab(R, G, B))], ["m-gpu", (R, G) => gpuM(TS.yellownessProd(R, G, B))]]) {
+      const fr = TS.makeFrame(128, 128);
+      for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+        const R = x / 127, G = 1 - y / 127, m = f(R, G), i = (y * 128 + x) * 3;
+        fr.data[i] = R * 255 * m; fr.data[i + 1] = G * 255 * m; fr.data[i + 2] = B * 255 * m;
+      }
+      const cv = document.getElementById(id), s = Fig.camera(cv, fr, {}), ctx = cv.getContext("2d");
+      ctx.font = `bold ${Math.round(s * 7)}px system-ui`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      for (const [l, R, G] of MARKS) {
+        const x = Math.min((R / 255) * 127, 121) * s, y = Math.max((1 - G / 255) * 127, 6) * s;  // keep markers inside the map
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, s * 5, 0, 7); ctx.fill();
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = "#111"; ctx.fillText(l, x, y + 1);
+      }
+      ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.font = `${Math.round(s * 5)}px system-ui`; ctx.textAlign = "left";
+      ctx.fillText("R →", cv.width - s * 22, cv.height - s * 5); ctx.fillText("↑ G", s * 3, s * 6);
+    }
+  }
+  drawMaps();
+
+  // ---------- ramp
+  const SURF = [["asphalt", [31, 31, 31]], ["paint in shadow", [38, 31, 0]], ["paint in glare", [246, 232, 170]], ["paint", [255, 209, 0]], ["orange cone", [255, 150, 0]]];
+  const lo = Demo.slider("lo", (v) => v.toFixed(2), drawRamp), hi = Demo.slider("hi", (v) => v.toFixed(2), drawRamp);
+  function drawRamp() {
+    const cv = document.getElementById("rp"), dpr = Fig.sizeCanvas(cv), ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
+    const L = Math.min(lo(), hi() - 0.01), Hh = Math.max(hi(), L + 0.01);
+    const pad = 40 * dpr, X = (y) => pad + ((y + 0.1) / 1.0) * (W - pad - 16 * dpr), Y = (m) => H - 30 * dpr - m * (H - 60 * dpr);
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = "#d9d5cc"; ctx.lineWidth = dpr; ctx.beginPath(); ctx.moveTo(pad, Y(1)); ctx.lineTo(pad, Y(0)); ctx.lineTo(W, Y(0)); ctx.stroke();
+    ctx.fillStyle = "#4a5058"; ctx.font = `${11 * dpr}px ui-monospace,monospace`;
+    ctx.fillText("mask 1", 2, Y(1) + 4 * dpr); ctx.fillText("0", pad - 14 * dpr, Y(0) + 4 * dpr);
+    for (const t of [0, 0.2, 0.4, 0.6]) ctx.fillText(t.toFixed(1), X(t) - 8 * dpr, H - 10 * dpr);
+    ctx.textAlign = "right"; ctx.fillText("yellowness = min(R,G) − B →", W - 4 * dpr, H - 10 * dpr); ctx.textAlign = "left";
+    // ramp
+    ctx.strokeStyle = "#e8590c"; ctx.lineWidth = 3 * dpr; ctx.beginPath(); ctx.moveTo(X(-0.1), Y(0)); ctx.lineTo(X(L), Y(0)); ctx.lineTo(X(Hh), Y(1)); ctx.lineTo(X(0.9), Y(1)); ctx.stroke();
+    ctx.setLineDash([3 * dpr, 3 * dpr]); ctx.lineWidth = dpr;
+    for (const [v, t] of [[L, "low"], [Hh, "high"]]) { ctx.beginPath(); ctx.moveTo(X(v), Y(0)); ctx.lineTo(X(v), Y(1.08)); ctx.stroke(); ctx.fillText(t, X(v) - 10 * dpr, Y(1.08) - 4 * dpr); }
+    ctx.setLineDash([]);
+    SURF.forEach(([name, rgb], k) => {
+      const y = TS.yellownessLab(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255), m = labM(y, L, Hh);
+      ctx.fillStyle = `rgb(${rgb})`; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath(); ctx.arc(X(y), Y(m), 7 * dpr, 0, 7); ctx.fill(); ctx.stroke();
+      const dy = [-12, -28, -12, -26, -12][k], right = X(y) > W * 0.62;   // label offsets per surface, no overlaps
+      ctx.fillStyle = "#111"; ctx.textAlign = right ? "right" : "left";
+      ctx.fillText(`${name} ${y.toFixed(2)} → ${m.toFixed(2)}`, X(y) + (right ? -10 : 10) * dpr, Y(m) + dy * dpr); ctx.textAlign = "left";
+    });
+  }
+  drawRamp();
+
+  // ---------- frame sweep
+  const clean = new TS.SyntheticTrack({ offset: 0.04, yaw: 0.06, curvature: 0.5, noise: 3 }).render(3);
+  const CONDS = { clean: (f) => f, "red curb": TS.STRESS.redCurb, cone: TS.STRESS.cone, shadow: TS.STRESS.shadow, glare: TS.STRESS.glare };
+  let frame = clean, mask = null, rows = 128;
+  const cond = Demo.chips("conds", Object.keys(CONDS), "red curb", restart);
+  const form = Demo.chips("formula", ["lab: min(R,G) − B", "GPU: R + G − 2B"], "lab: min(R,G) − B", restart);
+  function recompute() { frame = CONDS[cond()](clean); mask = form().startsWith("lab") ? TS.labMask(frame) : TS.prodMask(frame); }
+  function restart() { recompute(); anim.t = 0; anim.play(); }
+  recompute();
+  const camC = document.getElementById("f-cam"), maskC = document.getElementById("f-mask");
+  function drawSweep() {
+    const s = Fig.camera(camC, frame, {});
+    const part = new Float32Array(mask.length); part.set(mask.subarray(0, Math.floor(rows) * 128));
+    Fig.camera(maskC, TS.maskToFrame(part, 128, 128), {});
+    if (rows < 128) for (const c of [camC, maskC]) { const x = c.getContext("2d"); x.fillStyle = "#fcc419"; x.fillRect(0, Math.floor(rows) * s, c.width, Math.max(2, s)); }
+  }
+  const anim = Demo.animate(document.getElementById("sweep"), (t) => {
+    rows = Math.min(128, (t % 4) * 64);       // 2 s sweep, 2 s hold, repeat
+    drawSweep();
+  }, document.getElementById("replay"));
+  camC.addEventListener("mousemove", (e) => {
+    const rc = camC.getBoundingClientRect();
+    const u = Math.floor(((e.clientX - rc.left) / rc.width) * 128), v = Math.floor(((e.clientY - rc.top) / rc.height) * 128);
+    if (u < 0 || v < 0 || u > 127 || v > 127) return;
+    const [R, G, B] = TS.px(frame, u, v), lab = form().startsWith("lab");
+    Demo.set("h-uv", `${u}, ${v}`); Demo.set("h-rgb", `${R} ${G} ${B}`);
+    Demo.set("h-s", (lab ? TS.yellownessLab(R / 255, G / 255, B / 255) : TS.yellownessProd(R / 255, G / 255, B / 255)).toFixed(2));
+    Demo.set("h-m", mask[v * 128 + u].toFixed(2));
+  });
+  Fig.onTheme(() => { drawMaps(); drawRamp(); drawSweep(); });
+})();
+</script>
+</body>
+</html>

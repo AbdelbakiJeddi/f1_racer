@@ -1,0 +1,71 @@
+/* demo.css — white "fiche" style for the detector presentation.
+ * Base = fiche-revision-illustree page.py CSS, plus styles for live figures.
+ * Colour meaning (every page): BLUE = near band, VIOLET = far band, YELLOW = paint,
+ * ORANGE = highlight / problem, GREEN = correct / matches truth.
+ */
+html{color-scheme:light;background:#fff}
+:root{
+  --bg:#ffffff;--fg:#111111;--mut:#4a5058;--line:#e4e1da;--card:#ffffff;--acc:#e8590c;--tint:#fff4ec;
+  /* names read by course/assets/figures.js */
+  --ink:#111111;--ink-2:#4a5058;--rule:#d9d5cc;--near:#1c7ed6;--far:#7950f2;--yellow:#fcc419;
+  --bad:#e8590c;--good:#2f9e44;--panel:#f4f3ef;--mono:ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:40px 22px 80px}
+h1{font-size:30px;line-height:1.2;margin:0 0 6px}.sub{color:var(--mut);margin:0 0 18px}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+nav a{font-size:13px;color:var(--fg);text-decoration:none;border:1px solid var(--line);padding:4px 10px;border-radius:20px}
+nav a:hover{border-color:var(--fg)}
+nav.pages a[aria-current]{background:var(--fg);color:#fff;border-color:var(--fg)}
+nav.toc{margin-bottom:34px}nav.toc a{color:var(--mut)}
+section{border-top:1px solid var(--line);padding-top:26px;margin-top:38px}
+h2{font-size:22px;margin:0 0 4px}.sl{font-size:12px;color:var(--mut);font-weight:500;margin-left:6px}
+h3{font-size:17px;margin:26px 0 6px}h4{margin:0 0 6px;font-size:14px}
+p{margin:8px 0}.small{font-size:13px;color:var(--mut);margin:6px 0 0}
+figure{margin:16px 0;text-align:center}
+svg{width:100%;height:auto;color:var(--fg);font-family:system-ui,sans-serif}
+figcaption{font-size:13px;color:var(--mut);margin-top:8px;text-align:left}
+.key{background:var(--tint);border-left:3px solid var(--acc);padding:10px 14px;border-radius:4px;margin:14px 0;font-size:15px}.key b{color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:16px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin:16px 0}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:left}
+table{border-collapse:collapse;margin:10px 0;font-size:14px}td,th{border:1px solid var(--line);padding:4px 10px;text-align:center}
+.props td{text-align:left}.props td:first-child{font-weight:600}
+.mono,code{font-family:ui-monospace,Menlo,monospace;font-size:.92em}
+.ok{color:#2f9e44;font-weight:700}.ko{color:var(--acc);font-weight:700}.hl{color:var(--acc);font-weight:700}
+.near{color:var(--near);font-weight:700}.far{color:var(--far);font-weight:700}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:600px){.cols{grid-template-columns:1fr}}
+pre{border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;margin:6px 0;overflow-x:auto;text-align:left}
+pre .hl{background:var(--tint)}
+
+/* ---------- live figures ---------- */
+figure.demo{text-align:left;border:1px solid var(--line);border-radius:10px;padding:14px}
+.lbl{font-size:12px;color:var(--mut);margin:0 0 4px;font-weight:600}
+canvas.px{width:100%;aspect-ratio:1;image-rendering:pixelated;display:block;background:#1f1f1f;border-radius:6px}
+canvas.px.map{background:#fff;border:1px solid var(--line)}
+canvas.plot{width:100%;height:170px;display:block}
+canvas.tall{height:260px}
+.controls{display:grid;grid-template-columns:max-content 1fr 4.8rem;gap:4px 12px;align-items:center;margin-top:12px;font-size:13px}
+.controls label{color:var(--mut);font-weight:600}
+.controls output{font-family:ui-monospace,Menlo,monospace;font-size:12px;text-align:right}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+button{font:13px system-ui,sans-serif;color:var(--fg);background:#fff;border:1px solid var(--line);border-radius:20px;padding:4px 12px;cursor:pointer}
+button:hover{border-color:var(--fg)}
+button[aria-pressed=true]{background:var(--fg);color:#fff;border-color:var(--fg)}
+button.play{margin-top:10px}
+:focus-visible{outline:2px solid var(--near);outline-offset:2px}
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:10px}
+.readout div{border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.readout span{display:block;font-size:11px;color:var(--mut);font-weight:600}
+.readout b{font:600 15px ui-monospace,Menlo,monospace}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--mut);margin:0 0 8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:48px;border-top:1px solid var(--line);padding-top:16px;font-size:14px}
+.pager a{color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:20px;padding:5px 14px}
+.pager a:hover{border-color:var(--fg)}
+.step{display:inline-block;background:var(--fg);color:#fff;border-radius:20px;font-size:12px;font-weight:700;padding:1px 9px;margin-right:8px;vertical-align:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{nav,.controls,button,.chips,.pager{display:none!important}figure,section{break-inside:avoid}}

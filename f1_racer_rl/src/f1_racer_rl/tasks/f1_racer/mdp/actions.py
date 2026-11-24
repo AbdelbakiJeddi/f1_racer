@@ -29,22 +29,42 @@ class LeatherbackDriveAction(ActionTerm):
         super().__init__(cfg, env)
 
         # Find steering knuckle joint indices
-        self._steer_joint_ids, self._steer_joint_names = self._asset.find_joints("Knuckle__Upright__Front_.*")
+        self._steer_joint_ids, self._steer_joint_names = self._asset.find_joints(
+            "Knuckle__Upright__Front_.*"
+        )
         # Find left drive wheel joint indices
-        self._left_wheel_ids, self._left_wheel_names = self._asset.find_joints("Wheel__.*_Left")
+        self._left_wheel_ids, self._left_wheel_names = self._asset.find_joints(
+            "Wheel__.*_Left"
+        )
         # Find right drive wheel joint indices
-        self._right_wheel_ids, self._right_wheel_names = self._asset.find_joints("Wheel__.*_Right")
+        self._right_wheel_ids, self._right_wheel_names = self._asset.find_joints(
+            "Wheel__.*_Right"
+        )
 
         # Buffers for target commands
-        self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
-        self._prev_raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
-        self._processed_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._raw_actions = torch.zeros(
+            self.num_envs, self.action_dim, device=self.device
+        )
+        self._prev_raw_actions = torch.zeros(
+            self.num_envs, self.action_dim, device=self.device
+        )
+        self._processed_actions = torch.zeros(
+            self.num_envs, self.action_dim, device=self.device
+        )
         self._current_steer = torch.zeros(self.num_envs, 1, device=self.device)
-        self._current_throttle = torch.full((self.num_envs, 1), -1.0, device=self.device)
+        self._current_throttle = torch.full(
+            (self.num_envs, 1), -1.0, device=self.device
+        )
 
-        self._steer_targets = torch.zeros(self.num_envs, len(self._steer_joint_ids), device=self.device)
-        self._left_wheel_targets = torch.zeros(self.num_envs, len(self._left_wheel_ids), device=self.device)
-        self._right_wheel_targets = torch.zeros(self.num_envs, len(self._right_wheel_ids), device=self.device)
+        self._steer_targets = torch.zeros(
+            self.num_envs, len(self._steer_joint_ids), device=self.device
+        )
+        self._left_wheel_targets = torch.zeros(
+            self.num_envs, len(self._left_wheel_ids), device=self.device
+        )
+        self._right_wheel_targets = torch.zeros(
+            self.num_envs, len(self._right_wheel_ids), device=self.device
+        )
 
     @property
     def action_dim(self) -> int:
@@ -81,17 +101,28 @@ class LeatherbackDriveAction(ActionTerm):
 
         # Enforce physical servo slew rate limit
         max_steer_delta = self.cfg.max_steer_rate * self._env.step_dt
-        steer_delta = torch.clamp(filtered_steer - self._current_steer, -max_steer_delta, max_steer_delta)
+        steer_delta = torch.clamp(
+            filtered_steer - self._current_steer, -max_steer_delta, max_steer_delta
+        )
         self._current_steer = self._current_steer + steer_delta
         self._steer_targets = self._current_steer.repeat(1, len(self._steer_joint_ids))
 
         # Smooth throttle transitions to eliminate longitudinal jerking
         max_throttle_delta = self.cfg.max_throttle_rate * self._env.step_dt
-        throttle_delta = torch.clamp(throttle_action - self._current_throttle, -max_throttle_delta, max_throttle_delta)
+        throttle_delta = torch.clamp(
+            throttle_action - self._current_throttle,
+            -max_throttle_delta,
+            max_throttle_delta,
+        )
         self._current_throttle = self._current_throttle + throttle_delta
 
         # Forward speed mapping: [-1, 1] -> [min_speed, max_speed]
-        speed = 0.5 * (self._current_throttle + 1.0) * (self.cfg.max_speed - self.cfg.min_speed) + self.cfg.min_speed
+        speed = (
+            0.5
+            * (self._current_throttle + 1.0)
+            * (self.cfg.max_speed - self.cfg.min_speed)
+            + self.cfg.min_speed
+        )
         target_omega = speed / self.cfg.wheel_radius  # (num_envs, 1) rad/s
 
         # In official NVIDIA Leatherback, both left and right wheels rotate with positive velocity for forward motion
@@ -100,10 +131,16 @@ class LeatherbackDriveAction(ActionTerm):
 
     def apply_actions(self):
         # Apply front wheel steering angles (position control)
-        self._asset.set_joint_position_target_index(target=self._steer_targets, joint_ids=self._steer_joint_ids)
+        self._asset.set_joint_position_target_index(
+            target=self._steer_targets, joint_ids=self._steer_joint_ids
+        )
         # Apply 4-wheel drive velocities (velocity control)
-        self._asset.set_joint_velocity_target_index(target=self._left_wheel_targets, joint_ids=self._left_wheel_ids)
-        self._asset.set_joint_velocity_target_index(target=self._right_wheel_targets, joint_ids=self._right_wheel_ids)
+        self._asset.set_joint_velocity_target_index(
+            target=self._left_wheel_targets, joint_ids=self._left_wheel_ids
+        )
+        self._asset.set_joint_velocity_target_index(
+            target=self._right_wheel_targets, joint_ids=self._right_wheel_ids
+        )
 
     def reset(self, env_ids: torch.Tensor | None = None):
         if env_ids is None:
@@ -142,7 +179,7 @@ class LeatherbackDriveActionCfg(ActionTermCfg):
     """Maximum throttle slew rate per second to prevent abrupt acceleration jerks."""
     """Maximum steering slew rate in rad/s (~340 deg/s, eliminates servo jitter/wobble)."""
 
-    max_speed: float = 2.5
+    max_speed: float = 4.0
     """Maximum driving speed in m/s (calibrated for stable 4-wheel ground contact without pitch-up)."""
 
     min_speed: float = 0.0

@@ -48,7 +48,15 @@ class CarTerminations:
 
         return (torch.abs(roll) > max_tilt_rad) | (torch.abs(pitch) > max_tilt_rad)
 
+    @staticmethod
+    def lap_completed(env: ManagerBasedRLEnv) -> torch.Tensor:
+        """Terminates when the car successfully completes the full lap / turn."""
+        if hasattr(env, "_lap_completed"):
+            return env._lap_completed
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
 
 # Direct functional aliases for compatibility
 off_track = CarTerminations.off_track
 vehicle_rollover = CarTerminations.rollover
+lap_completed = CarTerminations.lap_completed

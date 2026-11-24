@@ -22,6 +22,8 @@ from .observations import (  # noqa: F401
 from .rewards import (  # noqa: F401
     CarRewards,
     boundary_violation_penalty,
+    lap_completion_bonus,
+    slow_speed_penalty,
     steering_rate_penalty,
     steering_smoothness_penalty,
     track_centering,
@@ -30,6 +32,7 @@ from .rewards import (  # noqa: F401
 )
 from .terminations import (  # noqa: F401
     CarTerminations,
+    lap_completed,
     off_track,
     vehicle_rollover,
 )
@@ -57,7 +60,10 @@ __all__ = [
     "boundary_violation_penalty",
     "steering_smoothness_penalty",
     "steering_rate_penalty",
+    "slow_speed_penalty",
+    "lap_completion_bonus",
     "off_track",
     "vehicle_rollover",
+    "lap_completed",
     "reset_car_pose_on_track",
 ]

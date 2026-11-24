@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3 · Camera model</title>
+<link rel="stylesheet" href="assets/demo.css">
+</head>
+<body data-page="camera">
+<main>
+<h1>3 · Camera model</h1>
+<p class="sub">Block 3: turn image pixels into metres on the ground, so the outputs mean the same thing on every row. Source: <code>labs/lanedet/camera.py</code>. Synthetic camera: f = 64 px, h = 0.25 m, horizon row v<sub>h</sub> = 35.84.</p>
+
+<section id="shrink">
+  <h2>A metre shrinks with distance<span class="sl">camera.py · width_px()</span></h2>
+  <p>The track is 0.6 m wide everywhere. In the image it is 86 px wide at the near band and 46 px at the far band. Pixel distances only mean something once you know which row they are on.</p>
+  <figure class="demo" id="ruler">
+    <div class="pair">
+      <div><p class="lbl">A 30 cm ruler laid across the road</p><canvas class="px" id="r-cam"></canvas></div>
+      <div><p class="lbl">Pixels per metre against row</p><canvas class="plot tall" id="r-plot"></canvas></div>
+    </div>
+    <div class="readout"><div><span>row v</span><b id="r-v">—</b></div><div><span>distance z</span><b id="r-z">—</b></div><div><span>30 cm spans</span><b id="r-px">—</b></div><div><span>pixels per metre</span><b id="r-ppm">—</b></div></div>
+    <button id="r-play">Pause</button>
+    <figcaption>The orange ruler is always 30 cm long on the ground, centred on the car's axis. It spans <b>43 px</b> at the near band, <b>23 px</b> at the far band, and shrinks to 0 at the horizon. The plot is a straight line: pixels per metre = (v − v<sub>h</sub>) / h. <span class="near">Blue</span> and <span class="far">violet</span> = the near and far bands.</figcaption>
+  </figure>
+  <div class="key">Pixels per metre grows <b>linearly</b> with distance below the horizon, <code>(v − v<sub>h</sub>)/h</code>. That one fact gives the whole camera model.</div>
+</section>
+
+<section id="side">
+  <h2>Why: similar triangles<span class="sl">pinhole camera, level</span></h2>
+  <p>Every ray passes through one point, the pinhole. A ground point at distance z sends a ray that lands on image row v. The farther the point, the flatter the ray and the closer it lands to the horizon row.</p>
+  <figure class="demo" id="sv-fig">
+    <canvas class="plot" id="sv" style="height:250px"></canvas>
+    <div class="readout"><div><span>ground distance z</span><b id="sv-z">—</b></div><div><span>image row v</span><b id="sv-v">—</b></div><div><span>v − v_h</span><b id="sv-d">—</b></div><div><span>(v − v_h) · z</span><b id="sv-p">—</b></div></div>
+    <button id="sv-play">Pause</button>
+    <figcaption>Two shaded triangles share the pinhole. The world one has height h and length z. The camera one has height v − v<sub>h</sub> and length f. Same angles, so <code>(v − v<sub>h</sub>)/f = h/z</code>. Watch the last readout: <code>(v − v<sub>h</sub>)·z</code> stays at f·h = <b>16</b> whatever the distance. Not to scale.</figcaption>
+  </figure>
+  <table class="props">
+    <tr><td>forward</td><td><code>v − v<sub>h</sub> = f·h / z</code></td><td>→</td><td><code>z = f·h / (v − v<sub>h</sub>)</code></td></tr>
+    <tr><td>sideways</td><td><code>u − c<sub>x</sub> = f·x / z</code></td><td>→</td><td><code>x = h·(u − c<sub>x</sub>) / (v − v<sub>h</sub>)</code></td></tr>
+  </table>
+  <div class="key">In the sideways formula <b>f cancels</b>. Lateral position needs only the camera height and the horizon row, which is why <code>e_lat</code> survives a badly known lens.</div>
+</section>
+
+<section id="click">
+  <h2>Any pixel → the ground<span class="sl">camera.py · lateral(), distance()</span></h2>
+  <p>Click anywhere below the horizon. The pixel is projected onto the ground and marked in the top view.</p>
+  <figure class="demo">
+    <div class="pair">
+      <div><p class="lbl">Camera · click below the dashed horizon</p><canvas class="px" id="ck-cam" style="cursor:crosshair"></canvas></div>
+      <div><p class="lbl">From above</p><canvas class="px map" id="ck-top"></canvas></div>
+    </div>
+    <div class="readout"><div><span>pixel u, v</span><b id="ck-uv">—</b></div><div><span>z forward</span><b id="ck-z">—</b></div><div><span>x lateral</span><b id="ck-x">—</b></div><div><span>1 m spans</span><b id="ck-ppm">—</b></div></div>
+    <figcaption>Preset: u = 96, v = 71.5, a point on the right line in the near band. x = 0.25·32/35.66 = <b>+0.224 m</b>, z = 16/35.66 = <b>0.449 m</b>. Click the same line higher up: x barely changes, but z grows fast as you approach the horizon.</figcaption>
+  </figure>
+</section>
+
+<section id="cal">
+  <h2>Finding the horizon row<span class="sl">camera.py · calibrate()</span></h2>
+  <p>On a real car the horizon row depends on how the camera is mounted, so it has to be measured. One frame of a <i>straight</i> track is enough. The gap between the lines shrinks linearly with v, and it reaches zero exactly at the horizon.</p>
+  <figure class="demo" id="cal-fig">
+    <div class="pair">
+      <div><canvas class="px" id="cal-cam"></canvas></div>
+      <div><canvas class="plot tall" id="cal-plot"></canvas></div>
+    </div>
+    <button id="cal-play">Pause</button>
+    <figcaption>Left: the two lines, extended upward (dashed), meet on the horizon, the vanishing point. Right: measured gap per row (blue dots) and the straight-line fit, which crosses zero at v<sub>h</sub>. The fitted value is printed next to the true 35.84.</figcaption>
+  </figure>
+  <div class="key">Calibration in one line: <b>fit gap = a·v + b on a straight track, then v<sub>h</sub> = −b/a</b>. The slope also measures the track width (a = 2w/h).</div>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const ORANGE = "#e8590c", base = new TS.SyntheticTrack(), cam = base.camera();
+  const NEAR = [68, 75], FAR = [52, 58];
+
+  // ---------- 1 m ruler
+  const straight = base.render();
+  const rCam = document.getElementById("r-cam"), rPlot = document.getElementById("r-plot");
+  function ruler(t) {
+    const v = 40 + (127 - 40) * (0.5 - 0.5 * Math.cos(t * 0.7));   // sweep rows 40..127
+    const s = Fig.camera(rCam, straight, { horizon: cam.vHorizon, bands: [{ rows: NEAR, color: "near" }, { rows: FAR, color: "far" }] });
+    const half = cam.widthPx(0.15, v), ctx = rCam.getContext("2d");
+    ctx.strokeStyle = ORANGE; ctx.lineWidth = Math.max(3, s * 0.9);
+    ctx.beginPath(); ctx.moveTo((64 - half) * s, v * s); ctx.lineTo((64 + half) * s, v * s);
+    for (const x of [64 - half, 64 + half]) { ctx.moveTo(x * s, (v - 2) * s); ctx.lineTo(x * s, (v + 2) * s); }
+    ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = `bold ${Math.round(s * 4.5)}px system-ui`; ctx.textAlign = "center"; ctx.fillText("30 cm", 64 * s, (v - 3) * s);
+    // plot
+    const dpr = Fig.sizeCanvas(rPlot), g = rPlot.getContext("2d"), W = rPlot.width, H = rPlot.height, pad = 44 * dpr;
+    const X = (vv) => pad + ((vv - 36) / (128 - 36)) * (W - pad - 10 * dpr), Y = (p) => H - 26 * dpr - (p / 380) * (H - 40 * dpr);
+    g.clearRect(0, 0, W, H);
+    for (const [rows, col] of [[NEAR, "#1c7ed6"], [FAR, "#7950f2"]]) { g.fillStyle = col; g.globalAlpha = 0.15; g.fillRect(X(rows[0]), 8 * dpr, X(rows[1]) - X(rows[0]), H - 34 * dpr); g.globalAlpha = 1; }
+    g.strokeStyle = "#d9d5cc"; g.lineWidth = dpr; g.beginPath(); g.moveTo(pad, 8 * dpr); g.lineTo(pad, H - 26 * dpr); g.lineTo(W, H - 26 * dpr); g.stroke();
+    g.fillStyle = "#4a5058"; g.font = `${11 * dpr}px ui-monospace,monospace`;
+    for (const vv of [40, 60, 80, 100, 120]) g.fillText(String(vv), X(vv) - 8 * dpr, H - 8 * dpr);
+    for (const p of [0, 100, 200, 300]) g.fillText(String(p), 6 * dpr, Y(p) + 4 * dpr);
+    g.fillText("row v", W - 50 * dpr, H - 30 * dpr); g.fillText("px per m", pad + 6 * dpr, 20 * dpr);
+    g.strokeStyle = "#111"; g.lineWidth = 2 * dpr; g.beginPath(); g.moveTo(X(cam.vHorizon), Y(0)); g.lineTo(X(128), Y(cam.widthPx(1, 128))); g.stroke();
+    g.fillStyle = ORANGE; g.beginPath(); g.arc(X(v), Y(cam.widthPx(1, v)), 6 * dpr, 0, 7); g.fill();
+    Demo.set("r-v", v.toFixed(1)); Demo.set("r-z", cam.distance(v).toFixed(2) + " m"); Demo.set("r-px", cam.widthPx(0.3, v).toFixed(0) + " px"); Demo.set("r-ppm", cam.widthPx(1, v).toFixed(0));
+  }
+  const a0 = Demo.animate(document.getElementById("ruler"), ruler, document.getElementById("r-play"));
+
+  // ---------- side view
+  const sv = document.getElementById("sv");
+  function side(t) {
+    const dpr = Fig.sizeCanvas(sv), ctx = sv.getContext("2d"), W = sv.width, H = sv.height;
+    ctx.clearRect(0, 0, W, H);
+    const z = 0.65 + 0.45 * Math.sin(t * 0.9), gy = H - 26 * dpr, k = (W - 160 * dpr) / 1.25;
+    const camX = 120 * dpr, camY = gy - H * 0.55, hS = gy - camY, P = { x: camX + z * k, y: gy };
+    const fS = 70 * dpr, planeX = camX - fS, dy = (fS * hS) / (z * k);
+    ctx.font = `${12 * dpr}px ui-monospace,monospace`;
+    ctx.strokeStyle = "#4a5058"; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(planeX - 20 * dpr, gy); ctx.lineTo(W, gy); ctx.stroke();
+    ctx.fillStyle = "#4a5058"; ctx.fillText("ground", W - 64 * dpr, gy + 17 * dpr);
+    ctx.setLineDash([4 * dpr, 4 * dpr]); ctx.strokeStyle = "#bbb"; ctx.lineWidth = dpr; ctx.beginPath(); ctx.moveTo(planeX - 10 * dpr, camY); ctx.lineTo(W, camY); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillText("optical axis → horizon", W - 180 * dpr, camY - 7 * dpr);
+    ctx.fillStyle = "rgba(252,196,25,.3)";
+    ctx.beginPath(); ctx.moveTo(camX, camY); ctx.lineTo(P.x, P.y); ctx.lineTo(P.x, camY); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(camX, camY); ctx.lineTo(planeX, camY - dy); ctx.lineTo(planeX, camY); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 4 * dpr; ctx.beginPath(); ctx.moveTo(planeX, camY - 60 * dpr); ctx.lineTo(planeX, camY + 50 * dpr); ctx.stroke();
+    ctx.fillStyle = "#111"; ctx.textAlign = "center"; ctx.fillText("image", planeX, camY + 66 * dpr); ctx.textAlign = "left";
+    ctx.strokeStyle = ORANGE; ctx.lineWidth = 2.5 * dpr; ctx.beginPath(); ctx.moveTo(P.x, P.y); ctx.lineTo(planeX, camY - dy); ctx.stroke();
+    ctx.strokeStyle = "#111"; ctx.lineWidth = dpr; ctx.beginPath(); ctx.moveTo(P.x, camY); ctx.lineTo(P.x, gy); ctx.stroke();
+    ctx.fillStyle = "#111"; ctx.fillText("h", P.x + 6 * dpr, (camY + gy) / 2); ctx.fillText("z", (camX + P.x) / 2, camY - 7 * dpr);
+    ctx.fillText("f", planeX + fS / 2 - 3 * dpr, camY + 16 * dpr);
+    ctx.fillStyle = ORANGE; ctx.fillText("v − v_h", planeX + 8 * dpr, camY - dy - 5 * dpr);
+    ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(camX, camY, 5 * dpr, 0, 7); ctx.fill(); ctx.fillText("pinhole", camX + 8 * dpr, camY - 10 * dpr);
+    ctx.fillStyle = "#fcc419"; ctx.strokeStyle = "#8a6d00"; ctx.beginPath(); ctx.arc(P.x, P.y, 7 * dpr, 0, 7); ctx.fill(); ctx.stroke();
+    const v = cam.rowAt(z);
+    Demo.set("sv-z", z.toFixed(2) + " m"); Demo.set("sv-v", v.toFixed(1)); Demo.set("sv-d", (v - cam.vHorizon).toFixed(1) + " px"); Demo.set("sv-p", ((v - cam.vHorizon) * z).toFixed(2));
+  }
+  const a1 = Demo.animate(document.getElementById("sv-fig"), side, document.getElementById("sv-play"));
+
+  // ---------- click to project
+  const track = base.with({ offset: 0.05, yaw: 0.08, curvature: 0.4 }), frame = track.render();
+  const ckCam = document.getElementById("ck-cam"), ckTop = document.getElementById("ck-top");
+  let pick = { u: 96, v: 71.5 };
+  function drawClick() {
+    Fig.camera(ckCam, frame, { horizon: cam.vHorizon, cross: [pick.u, pick.v], midline: true });
+    const geo = Fig.topDown(ckTop, track, { truth: false, zMax: 2.2, xRange: 1.1 });
+    Demo.set("ck-uv", `${pick.u.toFixed(1)}, ${pick.v.toFixed(1)}`);
+    if (pick.v - cam.vHorizon <= 0.5) { ["ck-z", "ck-x", "ck-ppm"].forEach((id) => Demo.set(id, "above horizon")); return; }
+    const x = cam.lateral(pick.u, pick.v), z = cam.distance(pick.v), ctx = ckTop.getContext("2d"), d = ckTop.width / ckTop.clientWidth;
+    ctx.strokeStyle = ORANGE; ctx.lineWidth = 3.5 * d;
+    const X = geo.X(x), Z = geo.Z(Math.min(z, 2.2)), r = 8 * d;
+    ctx.beginPath(); ctx.moveTo(X - r, Z - r); ctx.lineTo(X + r, Z + r); ctx.moveTo(X + r, Z - r); ctx.lineTo(X - r, Z + r); ctx.stroke();
+    Demo.set("ck-z", z.toFixed(3) + " m"); Demo.set("ck-x", Demo.sgn(x, 3) + " m"); Demo.set("ck-ppm", cam.widthPx(1, pick.v).toFixed(0) + " px");
+  }
+  ckCam.addEventListener("click", (e) => {
+    const rc = ckCam.getBoundingClientRect();
+    pick = { u: Math.floor(((e.clientX - rc.left) / rc.width) * 128) + 0.5, v: Math.floor(((e.clientY - rc.top) / rc.height) * 128) + 0.5 };
+    drawClick();
+  });
+  drawClick();
+
+  // ---------- calibration
+  const sm = TS.labMask(straight), vs = [], gap = [];
+  for (let r = 42; r < 126; r += 3) { const ls = TS.findLines(TS.bandProfile(sm, 128, [r, r + 1])); if (ls.length === 2) { vs.push(r + 0.5); gap.push(ls[1].u - ls[0].u); } }
+  const n = vs.length, mv = vs.reduce((a, b) => a + b) / n, mg = gap.reduce((a, b) => a + b) / n;
+  let num = 0, den = 0; for (let i = 0; i < n; i++) { num += (vs[i] - mv) * (gap[i] - mg); den += (vs[i] - mv) ** 2; }
+  const slope = num / den, icpt = mg - slope * mv, vh = -icpt / slope;
+  const calCam = document.getElementById("cal-cam"), calPlot = document.getElementById("cal-plot");
+  function cal(t) {
+    const p = Math.min(1, (t % 7) / 3.5);
+    const s = Fig.camera(calCam, straight, { horizon: p >= 1 ? vh : null }), ctx = calCam.getContext("2d"), top = 126 - (126 - vh) * p;
+    ctx.strokeStyle = ORANGE; ctx.lineWidth = Math.max(2, s * 0.6); ctx.setLineDash([s * 2, s * 1.5]);
+    for (const sd of [-1, 1]) { const uAt = (v) => cam.toPixelU(sd * base.halfWidth, v); ctx.beginPath(); ctx.moveTo(uAt(126) * s, 126 * s); ctx.lineTo(uAt(top) * s, top * s); ctx.stroke(); }
+    ctx.setLineDash([]);
+    const dpr = Fig.sizeCanvas(calPlot), g = calPlot.getContext("2d"), W = calPlot.width, H = calPlot.height, pad = 38 * dpr;
+    const X = (v) => pad + ((v - 30) / 98) * (W - pad - 10 * dpr), Y = (sp) => H - 26 * dpr - (sp / 130) * (H - 40 * dpr);
+    g.clearRect(0, 0, W, H);
+    g.strokeStyle = "#d9d5cc"; g.lineWidth = dpr; g.beginPath(); g.moveTo(pad, 8 * dpr); g.lineTo(pad, H - 26 * dpr); g.lineTo(W, H - 26 * dpr); g.stroke();
+    g.fillStyle = "#4a5058"; g.font = `${11 * dpr}px ui-monospace,monospace`;
+    for (let v = 40; v <= 120; v += 20) g.fillText(String(v), X(v) - 8 * dpr, H - 8 * dpr);
+    g.fillText("row v", W - 50 * dpr, H - 32 * dpr); g.fillText("gap between lines, px", pad + 6 * dpr, 20 * dpr);
+    const shown = Math.ceil(n * Math.min(1, (t % 7) / 2));
+    g.fillStyle = "#1c7ed6"; for (let i = 0; i < shown; i++) { g.beginPath(); g.arc(X(vs[i]), Y(gap[i]), 3.2 * dpr, 0, 7); g.fill(); }
+    if (p >= 1) {
+      g.strokeStyle = ORANGE; g.lineWidth = 2 * dpr; g.beginPath(); g.moveTo(X(vh), Y(0)); g.lineTo(X(127), Y(slope * 127 + icpt)); g.stroke();
+      g.fillStyle = ORANGE; g.beginPath(); g.arc(X(vh), Y(0), 6 * dpr, 0, 7); g.fill();
+      g.fillText(`fit: v_h = ${vh.toFixed(2)}  (true ${cam.vHorizon.toFixed(2)})`, X(vh) + 10 * dpr, Y(0) - 10 * dpr);
+    }
+  }
+  const a3 = Demo.animate(document.getElementById("cal-fig"), cal, document.getElementById("cal-play"));
+  Fig.onTheme(() => { a0.redraw(); a1.redraw(); drawClick(); a3.redraw(); });
+})();
+</script>
+</body>
+</html>

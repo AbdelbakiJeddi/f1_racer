@@ -1,8 +1,18 @@
+from __future__ import annotations
+
 import dataclasses
 import math
 
 import numpy as np
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
+
+
+def _get_pxr():
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
+    return Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
 
 
 @dataclasses.dataclass
@@ -208,6 +218,7 @@ class ProceduralTrack:
 
     def build_usd_meshes(self, stage: Usd.Stage, root_path: str = "/World/Track"):
         """Creates 3D ribbon meshes for the left and right boundary lines in the USD stage."""
+        Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade = _get_pxr()
         track_prim = stage.DefinePrim(root_path, "Xform")
         stage.SetDefaultPrim(track_prim)
 
@@ -247,6 +258,7 @@ class ProceduralTrack:
         aperture: float = 20.955,
     ) -> tuple[str, float]:
         """Creates a top-down camera positioned above the track center framing the whole path."""
+        Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade = _get_pxr()
         x_min, x_max, y_min, y_max = self.get_track_bounds()
         cx = (x_min + x_max) / 2.0
         cy = (y_min + y_max) / 2.0
@@ -274,6 +286,7 @@ class ProceduralTrack:
         material: UsdShade.Material,
     ):
         """Constructs a UsdGeom.Mesh ribbon along the given path points."""
+        Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade = _get_pxr()
         mesh = UsdGeom.Mesh.Define(stage, mesh_path)
         half_thick = self.cfg.line_thickness / 2.0
         z_height = 0.005  # Elevated above ground to ensure vivid visibility and prevent z-fighting
@@ -311,6 +324,7 @@ class ProceduralTrack:
 
     def build_ground_plane(self, stage: Usd.Stage, ground_path: str = "/World/Ground"):
         """Constructs the dark asphalt ground plane with randomized PBR properties."""
+        Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade = _get_pxr()
         mat_path = "/World/Looks/GroundMaterial"
         ground_mat = self._create_pbr_material(
             stage, mat_path, color=self.cfg.ground_color, emissive=(0.0, 0.0, 0.0), roughness=self.cfg.ground_roughness
@@ -325,6 +339,7 @@ class ProceduralTrack:
 
     def build_lighting(self, stage: Usd.Stage):
         """Constructs balanced lighting (DomeLight + Distant SunLight)."""
+        Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade = _get_pxr()
         dome_light = UsdLux.DomeLight.Define(stage, "/World/DomeLight")
         dome_light.CreateIntensityAttr(self.cfg.dome_intensity)
         dome_light.CreateColorAttr(Gf.Vec3f(0.8, 0.85, 0.95))
@@ -335,6 +350,7 @@ class ProceduralTrack:
         sun_light.AddRotateXYZOp().Set(Gf.Vec3f(-self.cfg.sun_elevation_deg, self.cfg.sun_azimuth_deg, 0.0))
 
     def _create_pbr_material(self, stage: Usd.Stage, path: str, color, emissive, roughness):
+        Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade = _get_pxr()
         mat = UsdShade.Material.Define(stage, path)
         shader = UsdShade.Shader.Define(stage, f"{path}/Shader")
         shader.CreateIdAttr("UsdPreviewSurface")

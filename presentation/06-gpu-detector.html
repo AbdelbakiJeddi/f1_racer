@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>6 · GPU TrackDetector</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>
+  .stepper{display:grid;grid-template-columns:1fr;gap:10px}.stepper .viz{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:center}@media(max-width:600px){.stepper .viz{grid-template-columns:1fr}}
+  .stepper pre{margin:0;font-size:12px;line-height:1.7}
+  .shape{font:700 20px ui-monospace,Menlo,monospace;margin:2px 0 4px}
+  #tensor text{font:12px ui-monospace,Menlo,monospace;fill:#4a5058}
+  .steps{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+  .calc{display:grid;grid-template-columns:max-content max-content 1fr;gap:4px 16px;font:13px ui-monospace,Menlo,monospace;margin-top:10px}
+</style>
+</head>
+<body data-page="gpu">
+<main>
+<h1>6 · The GPU TrackDetector</h1>
+<p class="sub">The production detector used during RL training: the same five blocks, run on a batch of N cars at once on the GPU. Source: <code>src/leatherback_racer/vision/track_detector.py</code> (247 lines).</p>
+
+<section id="tensor-s">
+  <h2>Follow the tensor<span class="sl">detect_detailed()</span></h2>
+  <p>Thousands of cars are simulated in parallel, and a Python loop over them would be the bottleneck. Every step keeps <b>N</b> as the first dimension, so the whole batch moves through each line together.</p>
+  <figure class="demo" id="walk">
+    <div class="stepper">
+      <pre id="code"></pre>
+      <div class="viz"><svg id="tensor" viewBox="0 0 300 190" aria-label="Tensor drawing"></svg>
+        <div><p class="lbl">Tensor shape</p><div class="shape" id="shape"></div><p class="small" id="note"></p></div></div>
+    </div>
+    <div class="steps" id="steps"></div>
+    <button id="walk-play">Pause</button>
+    <figcaption>Steps advance every 3 seconds. Click a number to stop on that step. The stacked slabs are the N cars. The highlighted code line produces the shape shown.</figcaption>
+  </figure>
+  <div class="key">Nine steps from <code>(N, 128, 128, 4)</code> to <code>(N, 3)</code>, and <b>no Python loop over cars</b>.</div>
+</section>
+
+<section id="diff">
+  <h2>Same idea, simpler pieces<span class="sl">lab vs GPU</span></h2>
+  <table class="props">
+    <tr><th>block</th><th>lab · labs/lanedet</th><th>GPU · TrackDetector</th></tr>
+    <tr><td>mask</td><td><code>min(R,G) − B</code>, ramp 0.15 → 0.40</td><td><code>R + G − 2B</code>, ramp 0.25 → 1 <span class="ko">(fires on red)</span></td></tr>
+    <tr><td>scan</td><td>every run above level, one centroid per run</td><td>split profile at u = 64, <b>one centre of mass per half</b></td></tr>
+    <tr><td>centre</td><td>test all pairs against expected width</td><td>both halves seen → midpoint · one half → shift by fixed span (0.80 near, 0.55 far)</td></tr>
+    <tr><td>camera</td><td>pinhole formulas (f, h, v<sub>h</sub>)</td><td>3 pre-computed constants: 0.525, 0.990, 0.532 m</td></tr>
+    <tr><td>memory</td><td><code>prev_x</code> across frames</td><td>none across frames · far band falls back to near estimate</td></tr>
+    <tr><td>branching</td><td>Python <code>if</code></td><td><code>torch.where</code>: each car picks its own branch</td></tr>
+  </table>
+  <p class="small"><code>torch.where(cond, a, b)</code> computes both <code>a</code> and <code>b</code> for every car, then picks per element. A few wasted FLOPs buy zero branching on the GPU.</p>
+</section>
+
+<section id="consts">
+  <h2>Where 0.525, 0.990 and 0.532 come from<span class="sl">env_cfg.py camera</span></h2>
+  <p>The GPU code measures across the image in normalised units, −1 (left edge) … +1 (right edge). A band's <i>visible half-width</i> in metres turns that into metres: <code>y = x_norm · half_width_visible</code>. That is the pinhole formula of page 3 with <code>u − c<sub>x</sub> = 64·x_norm</code>, so the constants <b>are</b> a camera model, pre-computed.</p>
+  <figure class="demo">
+    <div class="controls">
+      <label for="ch">camera height h</label><input type="range" id="ch" min="0.10" max="0.20" step="0.001" value="0.147"><output for="ch"></output>
+      <label for="pt">pitch down</label><input type="range" id="pt" min="5" max="25" step="0.5" value="15"><output for="pt"></output>
+    </div>
+    <div class="calc" id="calc"></div>
+    <figcaption>Isaac camera: focal_length 12 mm, horizontal_aperture 20.955 mm, 128 px, so f = 12/20.955·128 = <b>73.3 px</b>. Horizon row ≈ 64 − f·tan(pitch) = 44.4 at 15°. Band centres: rows 62 (near) and 54 (far). At h ≈ 0.147 m all three constants land within 5 % (<span class="ok">green</span>). The residue comes from treating a pitched camera as level. This is a reconstruction from the config, not a measured calibration.</figcaption>
+  </figure>
+</section>
+
+<section id="bend">
+  <h2>The weakness: one centre per half<span class="sl">sharp bends</span></h2>
+  <p>Splitting at the image centre assumes the left line stays in the left half. On a sharp right bend the far-left line crosses u = 64. The left half goes empty, and the code concludes "only the right line is visible", using a centre of mass that averages <i>both</i> lines.</p>
+  <figure class="demo">
+    <div class="grid2" style="margin:0">
+      <div><canvas class="px" id="bd-cam"></canvas></div>
+      <div><p class="lbl"><span class="far">Far band</span> profile · dashed = split at u = 64</p><canvas class="plot" id="bd-prof"></canvas></div>
+    </div>
+    <div class="controls">
+      <label for="bc">curvature</label><input type="range" id="bc" min="-1.2" max="1.2" step="0.05" value="0.8"><output for="bc"></output>
+      <label for="bo">offset</label><input type="range" id="bo" min="-0.2" max="0.2" step="0.01" value="0"><output for="bo"></output>
+    </div>
+    <div class="readout"><div><span>truth e_heading</span><b id="bd-t">—</b></div><div><span>lab e_heading</span><b id="bd-l">—</b></div><div><span>GPU e_heading</span><b id="bd-g">—</b></div><div><span>GPU far case</span><b id="bd-c">—</b></div></div>
+    <figcaption>Both detectors use the same bands and the same synthetic camera (GPU constants recomputed for it). Preset curvature 0.8 /m: truth +30.8°, lab +31.0°, GPU <span class="ko">−4.9°</span>, the wrong sign. Grey marks are the left and right centres of mass. Orange = the GPU's chosen centre.</figcaption>
+  </figure>
+  <figure class="demo">
+    <p class="lbl">e_heading against curvature, car centred · grey = truth · <span class="ok">green = lab</span> · <span class="ko">orange = GPU</span></p>
+    <canvas class="plot tall" id="sweep"></canvas>
+    <figcaption>Computed on load: 49 frames from −1.2 to +1.2 /m. Up to ±0.5 /m both match the truth. From ±0.6 /m the GPU under-reads (18.2° vs 24.1°). From ±0.8 /m it has the wrong sign. Over the labs' demo lap this costs <b>22.7°</b> heading RMSE vs <b>0.57°</b> for the lab detector.</figcaption>
+  </figure>
+  <div class="key">Pairing <b>by expected width</b> (lab) survives bends. Pairing <b>by image half</b> (GPU) is cheaper to batch but assumes a nearly straight road. Whether Isaac's bends reach this regime is measurable with <code>scripts/test_vision_pipeline_live.py</code>.</div>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const ORANGE = "#e8590c", GREEN = "#2f9e44", YEL = "#fcc419";
+  // ---------- tensor walkthrough
+  const CODE = [
+    "rgb_images                                  # TiledCamera output",
+    "rgb = rgb_images.permute(0, 3, 1, 2).float() / 255",
+    "mask = self.extract_line_mask(rgb)          # r+g-2b, ramp",
+    "near_slice = mask[:, 58:66, :]",
+    "profile_1d = mask_slice.mean(dim=1)",
+    "left_p, right_p = profile_1d[:, :64], profile_1d[:, 64:]",
+    "x_l = (left_p * grid_l).sum(-1, keepdim=True) / (mass_l + 1e-6)",
+    "center_x = torch.where(both, (x_l + x_r) * 0.5, torch.where(...))",
+    "features = torch.cat([e_lat, e_heading, confidence], dim=-1)",
+  ];
+  const STEPS = [
+    { shape: "(N, 128, 128, 4)", kind: "img", ch: ["#e03131", "#2f9e44", "#1c7ed6", "#adb5bd"], w: 1, h: 1, note: "Channels last, with alpha, uint8 0…255." },
+    { shape: "(N, 3, 128, 128)", kind: "img", ch: ["#e03131", "#2f9e44", "#1c7ed6"], w: 1, h: 1, note: "Channels first, alpha dropped, floats 0…1." },
+    { shape: "(N, 128, 128)", kind: "img", ch: [YEL], w: 1, h: 1, note: "One mask value per pixel: the colour axis is gone." },
+    { shape: "(N, 8, 128)", kind: "img", ch: [YEL], w: 1, h: 0.09, note: "Near band only: rows int(0.46·128)=58 to 66." },
+    { shape: "(N, 128)", kind: "img", ch: ["#1c7ed6"], w: 1, h: 0.03, note: "Rows averaged away: one profile per car." },
+    { shape: "2 × (N, 64)", kind: "split", note: "No run finding: cut the profile in two halves." },
+    { shape: "(N, 1)", kind: "img", ch: ["#111"], w: 0.05, h: 0.05, note: "Centre of mass per half, normalised −1…1." },
+    { shape: "(N, 1)", kind: "img", ch: [GREEN], w: 0.05, h: 0.05, note: "Pair / left / right / fallback, chosen per car." },
+    { shape: "(N, 3)", kind: "img", ch: [ORANGE], w: 0.15, h: 0.05, note: "[e_lat, e_heading, confidence] for every car." },
+  ];
+  const code = document.getElementById("code"), svg = document.getElementById("tensor"), stepsBox = document.getElementById("steps");
+  STEPS.forEach((_, i) => { const b = document.createElement("button"); b.type = "button"; b.textContent = i + 1; b.addEventListener("click", () => { walk.pause(); show(i); }); stepsBox.appendChild(b); });
+  let cur = -1;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  function show(i) {
+    if (i === cur) return; cur = i;
+    const s = STEPS[i];
+    code.innerHTML = CODE.map((l, k) => (k === i ? `<span class="hl">${esc(l)}</span>` : esc(l))).join("\n");
+    Demo.set("shape", s.shape); Demo.set("note", s.note);
+    stepsBox.querySelectorAll("button").forEach((b, k) => b.setAttribute("aria-pressed", k === i));
+    let h = "";
+    const W0 = 130, H0 = 110, x0 = 70, y0 = 30;
+    for (let n = 3; n >= 0; n--) {                         // N cars = stacked slabs
+      const ox = x0 + n * 12, oy = y0 + n * 10;
+      if (s.kind === "split") {
+        h += `<rect x="${ox}" y="${oy + 40}" width="62" height="8" fill="#1c7ed6" opacity="${0.35 + 0.15 * (3 - n)}" stroke="#111"/>`;
+        h += `<rect x="${ox + 68}" y="${oy + 40}" width="62" height="8" fill="#7950f2" opacity="${0.35 + 0.15 * (3 - n)}" stroke="#111"/>`;
+      } else {
+        const w = Math.max(8, W0 * s.w), hh = Math.max(6, H0 * s.h);
+        s.ch.forEach((c, k) => { h += `<rect x="${ox + k * 3}" y="${oy - k * 3}" width="${w}" height="${hh}" fill="${c}" opacity="${n === 0 ? 0.9 : 0.25}" stroke="#111" stroke-width=".8"/>`; });
+      }
+    }
+    h += `<text x="4" y="22">N cars →</text>`;
+    svg.innerHTML = h;
+  }
+  const walk = Demo.animate(document.getElementById("walk"), (t) => show(Math.floor(t / 3) % STEPS.length), document.getElementById("walk-play"));
+
+  // ---------- calibration calculator
+  const fI = (12 / 20.955) * 128;
+  const ch = Demo.slider("ch", (v) => v.toFixed(3) + " m", calc), pt = Demo.slider("pt", (v) => v.toFixed(1) + "°", calc);
+  function calc() {
+    const vh = 64 - fI * Math.tan((pt() * Math.PI) / 180), h = ch();
+    const rows = [["near_half_width", (h * 64) / (62 - vh), 0.525], ["far_half_width", (h * 64) / (54 - vh), 0.99], ["longitudinal_delta_d", fI * h * (1 / (54 - vh) - 1 / (62 - vh)), 0.532]];
+    document.getElementById("calc").innerHTML = `<span>horizon row v_h</span><span>${vh.toFixed(1)}</span><span></span><span><b>constant</b></span><span><b>model</b></span><span><b>code · difference</b></span>` +
+      rows.map(([n, m, c]) => { const r = m / c - 1; return `<span>${n}</span><span>${m.toFixed(3)}</span><span class="${Math.abs(r) < 0.06 ? "ok" : "ko"}">${c.toFixed(3)} · ${(r * 100 >= 0 ? "+" : "") + (r * 100).toFixed(1)} %</span>`; }).join("");
+  }
+  calc();
+
+  // ---------- bend failure
+  const base = new TS.SyntheticTrack(), cam = base.camera();
+  const gpu = new TS.ProdDetector(TS.prodConfigFor(cam)), nr = gpu.rows(gpu.nearRoi), fr = gpu.rows(gpu.farRoi);
+  const vn = (nr[0] + nr[1]) / 2, vf = (fr[0] + fr[1]) / 2, zn = cam.distance(vn), zf = cam.distance(vf);
+  const truthH = (tr) => Math.atan2(tr.centreX(zf) - tr.centreX(zn), zf - zn);
+  const bc = Demo.slider("bc", (v) => Demo.sgn(v) + " /m", bend), bo = Demo.slider("bo", (v) => Demo.sgn(v) + " m", bend);
+  const toU = (x) => 64 + x * 64;
+  function bend() {
+    const tr = base.with({ curvature: bc(), offset: bo() }), f = tr.render(), g = gpu.detect(f);
+    const lab = new TS.LaneDetector(cam, { nearRows: nr, farRows: fr }).detect(f), t = truthH(tr);
+    Fig.camera(document.getElementById("bd-cam"), f, { midline: true, bands: [{ rows: nr, color: "near", centreU: toU(g.near.x), v: vn }, { rows: fr, color: "far", centreU: toU(g.far.x), v: vf }] });
+    const ls = [];
+    if (g.far.massL > 1e-3) ls.push({ u: toU(g.far.xL), color: "#adb5bd", label: "L c.o.m." });
+    if (g.far.massR > 1e-3) ls.push({ u: toU(g.far.xR), color: "#adb5bd", label: "R c.o.m." });
+    ls.push({ u: toU(g.far.x), color: ORANGE, label: "GPU centre" });
+    ls.sort((a, b) => a.u - b.u);   // neighbours get staggered label heights
+    Fig.profile(document.getElementById("bd-prof"), [{ data: g.far.profile, color: "far", fill: true }], { split: 64, xlabel: "u (px)", lines: ls });
+    Demo.set("bd-t", Demo.deg(t)); Demo.set("bd-l", Demo.deg(lab.eHeading)); Demo.set("bd-c", g.far.case);
+    const wrong = Math.abs(t) > 0.05 && Math.sign(g.eHeading) !== Math.sign(t), el = document.getElementById("bd-g");
+    el.textContent = Demo.deg(g.eHeading) + (wrong ? "  wrong sign" : ""); el.style.color = wrong ? ORANGE : "";
+  }
+  bend();
+
+  // ---------- sweep plot
+  const sw = [];
+  for (let c = -1.2; c <= 1.2001; c += 0.05) {
+    const tr = base.with({ curvature: c }), f = tr.render();
+    sw.push({ c, t: truthH(tr), l: new TS.LaneDetector(cam, { nearRows: nr, farRows: fr }).detect(f).eHeading, g: gpu.detect(f).eHeading });
+  }
+  function drawSweep() {
+    const cv = document.getElementById("sweep"), dpr = Fig.sizeCanvas(cv), g = cv.getContext("2d"), W = cv.width, H = cv.height, pad = 42 * dpr;
+    const X = (c) => pad + ((c + 1.2) / 2.4) * (W - pad - 10 * dpr), Y = (r) => H / 2 - ((r * 180) / Math.PI / 50) * (H / 2 - 18 * dpr);
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = "#fff4ec"; g.fillRect(X(-1.2), 0, X(-0.575) - X(-1.2), H); g.fillRect(X(0.575), 0, X(1.2) - X(0.575), H);
+    g.strokeStyle = "#d9d5cc"; g.lineWidth = dpr; g.beginPath(); g.moveTo(pad, Y(0)); g.lineTo(W, Y(0)); g.moveTo(X(0), 0); g.lineTo(X(0), H); g.stroke();
+    g.fillStyle = "#4a5058"; g.font = `${11 * dpr}px ui-monospace,monospace`;
+    for (const d of [-40, -20, 20, 40]) g.fillText((d > 0 ? "+" : "") + d + "°", 2, Y((d * Math.PI) / 180) + 4 * dpr);
+    for (const c of [-1, -0.5, 0.5, 1]) g.fillText(c.toFixed(1), X(c) - 10 * dpr, H - 4 * dpr);
+    g.fillText("curvature /m", W - 100 * dpr, Y(0) - 6 * dpr);
+    const line = (k, col, w) => { g.strokeStyle = col; g.lineWidth = w * dpr; g.beginPath(); sw.forEach((p, i) => { i ? g.lineTo(X(p.c), Y(p[k])) : g.moveTo(X(p.c), Y(p[k])); }); g.stroke(); };
+    line("t", "rgba(120,120,120,.45)", 7); line("l", GREEN, 2); line("g", ORANGE, 2.5);
+  }
+  drawSweep();
+  Fig.onTheme(() => { const c = cur; cur = -1; show(Math.max(0, c)); bend(); drawSweep(); });
+})();
+</script>
+</body>
+</html>

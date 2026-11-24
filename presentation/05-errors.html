@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5 · Control errors</title>
+<link rel="stylesheet" href="assets/demo.css">
+<style>#geo text{font:13px system-ui,sans-serif}#geo .m{font:12px ui-monospace,Menlo,monospace}</style>
+</head>
+<body data-page="errors">
+<main>
+<h1>5 · Control errors</h1>
+<p class="sub">Block 5: two centre points in metres become the three numbers the policy steers by. Source: <code>LaneDetector.__call__</code> in <code>labs/lanedet/detector.py</code>.</p>
+
+<section id="geo-s">
+  <h2>Two points are enough<span class="sl">near z ≈ 0.45 m · far z ≈ 0.84 m</span></h2>
+  <p>After block 4 we have the track centre on each band, in metres: <span class="near">x<sub>near</sub></span> and <span class="far">x<sub>far</sub></span>. The near point says where the track <i>is</i>. The line from near to far says where it is <i>going</i>.</p>
+  <figure>
+    <svg id="geo" viewBox="0 0 640 330" role="img" aria-label="Top view: car, near and far centre points, chord and heading angle">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#111"/></marker></defs>
+      <path d="M190,320 C200,220 250,120 330,20" fill="none" stroke="#fcc419" stroke-width="6"/>
+      <path d="M430,320 C440,220 490,120 570,20" fill="none" stroke="#fcc419" stroke-width="6"/>
+      <path d="M310,320 C320,220 370,120 450,20" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6 6"/>
+      <line x1="250" y1="320" x2="250" y2="20" stroke="#e8590c" stroke-width="1.5"/>
+      <text x="256" y="34" fill="#e8590c">car heading</text>
+      <path d="M250,300 l-12,24 h24 z" fill="#111"/>
+      <line x1="40" y1="230" x2="600" y2="230" stroke="#1c7ed6" stroke-opacity=".35"/>
+      <line x1="40" y1="120" x2="600" y2="120" stroke="#7950f2" stroke-opacity=".35"/>
+      <circle cx="332" cy="230" r="8" fill="#1c7ed6"/><circle cx="383" cy="120" r="8" fill="#7950f2"/>
+      <line x1="332" y1="230" x2="383" y2="120" stroke="#111" stroke-width="3"/>
+      <line x1="332" y1="230" x2="332" y2="110" stroke="#111" stroke-dasharray="3 3"/>
+      <path d="M332,180 A50,50 0 0 1 353,184.6" fill="none" stroke="#2f9e44" stroke-width="2.5"/>
+      <text x="356" y="170" fill="#2f9e44" font-weight="700">e_heading</text>
+      <line x1="250" y1="250" x2="330" y2="250" stroke="#1c7ed6" stroke-width="2" marker-end="url(#ah)"/>
+      <text class="m" x="258" y="268" fill="#1c7ed6">x_near</text>
+      <line x1="250" y1="104" x2="381" y2="104" stroke="#7950f2" stroke-width="2" marker-end="url(#ah)"/>
+      <text class="m" x="270" y="98" fill="#7950f2">x_far</text>
+      <line x1="560" y1="230" x2="560" y2="124" stroke="#111" stroke-width="1.5" marker-end="url(#ah)"/>
+      <text class="m" x="568" y="182">Δz = 0.39 m</text>
+      <text class="m" x="46" y="224" fill="#1c7ed6">near band</text><text class="m" x="46" y="114" fill="#7950f2">far band</text>
+    </svg>
+    <figcaption>Top view, car at the bottom. Yellow = boundary lines, dashed grey = true centreline. <code>x_near</code> and <code>x_far</code> are measured sideways from the car's axis (orange). The chord near → far makes the angle <code>e_heading</code> with straight ahead.</figcaption>
+  </figure>
+  <table class="props">
+    <tr><td>e_lat</td><td><code>clip(x_near / half_width, −1, 1)</code></td><td>+ = centre is right · ±1 = on a line</td></tr>
+    <tr><td>e_heading</td><td><code>atan2(x_far − x_near, z_far − z_near)</code></td><td>+ = track heads right · radians</td></tr>
+    <tr><td>confidence</td><td><code>(conf_near + conf_far) / 2</code></td><td>0 … 1</td></tr>
+  </table>
+  <div class="key">Dividing by <code>half_width</code> (0.30 m) makes <code>e_lat</code> independent of track width: <b>±1 always means "on the boundary"</b>.</div>
+</section>
+
+<section id="live">
+  <h2>Live: detected vs truth<span class="sl">synthetic drive, noise σ = 4</span></h2>
+  <p>The same formulas applied to the simulator's exact centre give the "truth". The detected values track it within a fraction of a degree.</p>
+  <figure class="demo" id="drive">
+    <div class="pair">
+      <div><p class="lbl">Camera</p><canvas class="px" id="dv-cam"></canvas></div>
+      <div><p class="lbl">From above · chord and angle</p><canvas class="px map" id="dv-top"></canvas></div>
+    </div>
+    <p class="lbl" style="margin-top:12px">e_heading over the drive · <span style="color:#888">grey = truth</span> · <span class="far">violet = detected</span></p>
+    <canvas class="plot" id="dv-plot"></canvas>
+    <div class="readout">
+      <div><span>e_lat detected</span><b id="dv-el">—</b></div><div><span>e_lat truth</span><b id="dv-elt">—</b></div>
+      <div><span>e_heading detected</span><b id="dv-eh">—</b></div><div><span>e_heading truth</span><b id="dv-eht">—</b></div>
+    </div>
+    <button id="dv-play">Pause</button>
+    <figcaption>White chord = near → far centres. The arc is <code>e_heading</code>, measured from the car's heading (orange). Over the full lap the heading error RMSE is <b id="dv-rmse">…</b> (computed on load from 150 frames).</figcaption>
+  </figure>
+</section>
+
+<section id="chord">
+  <h2>A chord, not a tangent<span class="sl">curvature shows up early</span></h2>
+  <p>On a bend the chord is not the track direction at the car. It averages the direction over the look-ahead. For the synthetic track, centre x(z) = offset + tan(yaw)·z + ½·curvature·z², so:</p>
+  <p style="text-align:center"><code>(x_far − x_near)/(z_far − z_near) = tan(yaw) + ½·curvature·(z_near + z_far) = tan(yaw) + 0.64·curvature</code></p>
+  <figure class="demo">
+    <div class="pair">
+      <div><canvas class="px" id="fl-cam"></canvas></div>
+      <div><canvas class="px map" id="fl-top"></canvas></div>
+    </div>
+    <div class="controls">
+      <label for="off">offset</label><input type="range" id="off" min="-0.25" max="0.25" step="0.01" value="0"><output for="off"></output>
+      <label for="yaw">yaw</label><input type="range" id="yaw" min="-0.3" max="0.3" step="0.01" value="0"><output for="yaw"></output>
+      <label for="cur">curvature</label><input type="range" id="cur" min="-1.2" max="1.2" step="0.05" value="0.6"><output for="cur"></output>
+    </div>
+    <div class="readout"><div><span>e_lat</span><b id="fl-el">—</b></div><div><span>e_heading</span><b id="fl-eh">—</b></div><div><span>yaw at the car</span><b id="fl-yaw">—</b></div><div><span>e_heading − yaw</span><b id="fl-bend">—</b></div></div>
+    <figcaption>Preset: car straight and centred (yaw 0, offset 0), road bending right (curvature 0.6 /m). <code>e_lat</code> is 0, but <code>e_heading</code> is already about +21°: the policy sees the bend <b>before</b> the car is in it.</figcaption>
+  </figure>
+  <div class="key"><code>e_heading</code> = car-relative yaw <b>plus</b> a look-ahead term from curvature. Moving the far band farther increases how early bends show up.</div>
+</section>
+
+<section id="conf">
+  <h2>Confidence<span class="sl">mean of the two bands</span></h2>
+  <table class="props">
+    <tr><th>near band</th><th>far band</th><th>confidence</th><th>meaning</th></tr>
+    <tr><td>pair (1.0)</td><td>pair (1.0)</td><td class="ok">1.00</td><td>both lines seen on both bands</td></tr>
+    <tr><td>pair (1.0)</td><td>single (0.5)</td><td>0.75</td><td>far estimate relies on the prior</td></tr>
+    <tr><td>single (0.5)</td><td>single (0.5)</td><td>0.50</td><td>car near an edge, one line in view</td></tr>
+    <tr><td>pair (1.0)</td><td>none (0)</td><td class="ko">0.50</td><td>far centre frozen at last value, heading stale</td></tr>
+    <tr><td>none (0)</td><td>none (0)</td><td class="ko">0.00</td><td>both errors are last frame's guesses</td></tr>
+  </table>
+  <p class="small">Pair confidence is really <code>1 − err/0.35</code>, so a slightly wrong-width pair gives e.g. 0.82. Clipped lines multiply by 0.8.</p>
+  <div class="key">Confidence lets the policy <b>discount</b> its own inputs: low confidence = "these errors are guesses".</div>
+</section>
+</main>
+<script src="../course/assets/tracksim.js"></script>
+<script src="../course/assets/figures.js"></script>
+<script src="assets/demo.js"></script>
+<script>
+(() => {
+  const base = new TS.SyntheticTrack({ noise: 4 }), cam = base.camera();
+  const truth = (tr, d) => { const xn = tr.centreX(d.zNear), xf = tr.centreX(d.zFar); return { eLat: TS.clip(xn / tr.halfWidth, -1, 1), eHeading: Math.atan2(xf - xn, d.zFar - d.zNear) }; };
+
+  // whole lap precomputed (so the plot can show the full trace)
+  const det = new TS.LaneDetector(cam), lap = [];
+  let se = 0;
+  for (let i = 0; i < 150; i++) {
+    const track = base.with(TS.driveState(i)), frame = track.render(i), d = det.detect(frame), t = truth(track, d);
+    lap.push({ track, frame, d, t }); se += (d.eHeading - t.eHeading) ** 2;
+  }
+  Demo.set("dv-rmse", (Math.sqrt(se / 150) * 180 / Math.PI).toFixed(2) + "°");
+  let cur = 0;
+  function paint() {
+    const { track, frame, d, t } = lap[cur];
+    Fig.detection(document.getElementById("dv-cam"), frame, d, cam);
+    Fig.topDown(document.getElementById("dv-top"), track, { near: { z: d.zNear, x: d.xNear }, far: { z: d.zFar, x: d.xFar }, zMax: 1.1, xRange: 0.6 });
+    Demo.set("dv-el", Demo.sgn(d.eLat)); Demo.set("dv-elt", Demo.sgn(t.eLat)); Demo.set("dv-eh", Demo.deg(d.eHeading)); Demo.set("dv-eht", Demo.deg(t.eHeading));
+    const cv = document.getElementById("dv-plot"), dpr = Fig.sizeCanvas(cv), g = cv.getContext("2d"), W = cv.width, H = cv.height, pad = 36 * dpr;
+    const X = (k) => pad + (k / 149) * (W - pad - 6 * dpr), Y = (r) => H / 2 - (r * 180 / Math.PI / 40) * (H / 2 - 10 * dpr);
+    g.clearRect(0, 0, W, H);
+    g.strokeStyle = "#d9d5cc"; g.lineWidth = dpr; g.beginPath(); g.moveTo(pad, Y(0)); g.lineTo(W, Y(0)); g.stroke();
+    g.fillStyle = "#4a5058"; g.font = `${10 * dpr}px ui-monospace,monospace`; g.fillText("+40°", 2, Y(40 * Math.PI / 180) + 8 * dpr); g.fillText("−40°", 2, Y(-40 * Math.PI / 180));
+    const line = (fn, col, w) => { g.strokeStyle = col; g.lineWidth = w * dpr; g.beginPath(); lap.forEach((p, k) => { const y = Y(fn(p)); k ? g.lineTo(X(k), y) : g.moveTo(X(k), y); }); g.stroke(); };
+    line((p) => p.t.eHeading, "rgba(120,120,120,.45)", 5); line((p) => p.d.eHeading, "#7950f2", 1.6);
+    g.strokeStyle = "#111"; g.beginPath(); g.moveTo(X(cur), 0); g.lineTo(X(cur), H); g.stroke();
+  }
+  const a = Demo.animate(document.getElementById("drive"), (t) => { cur = Math.floor(t * 12) % 150; paint(); }, document.getElementById("dv-play"));
+
+  const det2 = new TS.LaneDetector(cam);
+  const off = Demo.slider("off", (v) => Demo.sgn(v) + " m", draw2), yaw = Demo.slider("yaw", (v) => Demo.sgn(v) + " rad", draw2), crv = Demo.slider("cur", (v) => Demo.sgn(v) + " /m", draw2);
+  function draw2() {
+    const track = base.with({ offset: off(), yaw: yaw(), curvature: crv(), noise: 0 }), frame = track.render();
+    det2.reset(); const d = det2.detect(frame);
+    Fig.detection(document.getElementById("fl-cam"), frame, d, cam);
+    Fig.topDown(document.getElementById("fl-top"), track, { near: { z: d.zNear, x: d.xNear }, far: { z: d.zFar, x: d.xFar }, zMax: 1.1, xRange: 0.6 });
+    Demo.set("fl-el", Demo.sgn(d.eLat)); Demo.set("fl-eh", Demo.deg(d.eHeading)); Demo.set("fl-yaw", Demo.deg(yaw()));
+    Demo.set("fl-bend", Demo.deg(d.eHeading - yaw()));
+  }
+  draw2();
+  Fig.onTheme(() => { paint(); draw2(); });
+})();
+</script>
+</body>
+</html>

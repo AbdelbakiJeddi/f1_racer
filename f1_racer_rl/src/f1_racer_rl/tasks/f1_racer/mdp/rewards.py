@@ -110,6 +110,78 @@ class CarRewards:
         delta_steer = action_term.raw_actions[:, 0] - action_term.prev_raw_actions[:, 0]
         return torch.square(delta_steer)
 
+    @staticmethod
+    def slow_speed_penalty(
+        env: ManagerBasedRLEnv,
+        min_speed: float = 1.5,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ) -> torch.Tensor:
+        """Penalizes vehicle when forward speed along track tangent is below min_speed."""
+        asset: Articulation = env.scene[asset_cfg.name]
+        oracle = TrackOracle.get_instance(device=str(asset.device))
+
+        pos_2d = asset.data.root_pos_w.torch[:, :2] - env.scene.env_origins[:, :2]
+        _, _, yaw = euler_xyz_from_quat(asset.data.root_quat_w.torch)
+
+        query = oracle.query(pos_2d, yaw)
+        tan_vec = query["tangent"]
+
+        vel_world_2d = asset.data.root_lin_vel_w.torch[:, :2]
+        fwd_speed = torch.sum(vel_world_2d * tan_vec, dim=-1)
+
+        return torch.clamp(min_speed - fwd_speed, min=0.0)
+
+    @staticmethod
+    def lap_completion_bonus(
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ) -> torch.Tensor:
+        """Awards a large one-time reward when completing a full turn / lap around the track."""
+        if not hasattr(env, "_checkpoint_progress"):
+            env._checkpoint_progress = torch.zeros(env.num_envs, dtype=torch.int64, device=env.device)
+            env._lap_completed = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+        asset: Articulation = env.scene[asset_cfg.name]
+        oracle = TrackOracle.get_instance(device=str(asset.device))
+
+        pos_2d = asset.data.root_pos_w.torch[:, :2] - env.scene.env_origins[:, :2]
+        _, _, yaw = euler_xyz_from_quat(asset.data.root_quat_w.torch)
+
+        query = oracle.query(pos_2d, yaw)
+        closest_idx = query["closest_idx"]
+        num_points = oracle.num_points
+
+        # Handle episode resets
+        reset_ids = env.episode_length_buf == 0
+        env._checkpoint_progress[reset_ids] = 0
+        env._lap_completed[reset_ids] = False
+
+        # Progress checkpoints (1/4, 1/2, 3/4)
+        q1 = num_points // 4
+        half = num_points // 2
+        q3 = (3 * num_points) // 4
+
+        env._checkpoint_progress = torch.where(
+            (env._checkpoint_progress == 0) & (closest_idx >= q1) & (closest_idx < half),
+            1,
+            env._checkpoint_progress,
+        )
+        env._checkpoint_progress = torch.where(
+            (env._checkpoint_progress == 1) & (closest_idx >= half) & (closest_idx < q3),
+            2,
+            env._checkpoint_progress,
+        )
+        env._checkpoint_progress = torch.where(
+            (env._checkpoint_progress == 2) & (closest_idx >= q3),
+            3,
+            env._checkpoint_progress,
+        )
+
+        completed = (env._checkpoint_progress == 3) & (closest_idx < max(1, q1 // 2)) & (~env._lap_completed)
+        env._lap_completed = env._lap_completed | completed
+
+        return completed.float()
+
 
 # Direct functional aliases for compatibility
 track_centering = CarRewards.centering
@@ -118,3 +190,5 @@ track_heading_alignment = CarRewards.heading_alignment
 boundary_violation_penalty = CarRewards.boundary_penalty
 steering_smoothness_penalty = CarRewards.steering_smoothness
 steering_rate_penalty = CarRewards.steering_rate
+slow_speed_penalty = CarRewards.slow_speed_penalty
+lap_completion_bonus = CarRewards.lap_completion_bonus
