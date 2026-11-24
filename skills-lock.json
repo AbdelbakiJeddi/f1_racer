@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "skills": {
+    "computer-vision-opencv": {
+      "source": "Mindrally/skills",
+      "commit": "7682ca77710e0971eab4e0ae5dddfa281aea0ba5",
+      "sourceType": "github",
+      "skillPath": "computer-vision-opencv/SKILL.md",
+      "computedHash": "91752d0ea85cca91c07e09bdc2f0c2a814779e01e0f6cd817c6ae3a072ed725f"
+    },
+    "deep-learning-pytorch": {
+      "source": "Mindrally/skills",
+      "commit": "7682ca77710e0971eab4e0ae5dddfa281aea0ba5",
+      "sourceType": "github",
+      "skillPath": "deep-learning-pytorch/SKILL.md",
+      "computedHash": "0e6faf12076ba35c9af817cdafd94446a0ccaf45e2c09cc45d572e3f2e3803df"
+    },
+    "pytorch-patterns": {
+      "source": "affaan-m/ECC",
+      "commit": "4adeee6732a12d1540f49a4d50a38ce8c97f9a53",
+      "sourceType": "github",
+      "skillPath": "skills/pytorch-patterns/SKILL.md",
+      "computedHash": "27f10c0703d3673e050b2200d12aafdc1542352a13d5a2ba6511a7fd31e370fd"
+    },
+    "stable-baselines3": {
+      "source": "K-Dense-AI/scientific-agent-skills",
+      "commit": "ec59a29a03d5c40f73ab40878df04860bc00e876",
+      "sourceType": "github",
+      "skillPath": "skills/stable-baselines3/SKILL.md",
+      "computedHash": "1a8e769dfd2eef366b3d9985d829ec0bfe2e31fc95502893729c3a4e26219930"
+    },
+    "teach": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/teach/SKILL.md",
+      "computedHash": "31bb3eed09dd2787e290e933def99fbf7d65044a29119c224af47c01404ab228"
+    }
+  }
+}

@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Centerline Detection</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  /* ── Layout: single column, wide content ── */
+  :root {
+    --bg:       #0f1117;
+    --bg2:      #181c27;
+    --bg3:      #1f2535;
+    --border:   #2a3045;
+    --fg:       #e8eaf0;
+    --fg2:      #9aa0b8;
+    --accent:   #4ade80;
+    --accent2:  #60a5fa;
+    --warn:     #f59e0b;
+    --code-bg:  #131720;
+
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-body:    'Inter', system-ui, sans-serif;
+    --font-mono:    'JetBrains Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:      #f7f8fc;
+      --bg2:     #ffffff;
+      --bg3:     #eef0f8;
+      --border:  #d4d8e8;
+      --fg:      #1a1d2e;
+      --fg2:     #5a6080;
+      --accent:  #16a34a;
+      --accent2: #2563eb;
+      --warn:    #d97706;
+      --code-bg: #f0f2f8;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:      #f7f8fc;
+    --bg2:     #ffffff;
+    --bg3:     #eef0f8;
+    --border:  #d4d8e8;
+    --fg:      #1a1d2e;
+    --fg2:     #5a6080;
+    --accent:  #16a34a;
+    --accent2: #2563eb;
+    --warn:    #d97706;
+    --code-bg: #f0f2f8;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.7;
+    padding-left:  max(16px, env(safe-area-inset-left,  0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0 4rem;
+  }
+
+  /* ── Nav bar ── */
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: .6rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    z-index: 10;
+  }
+  .topbar-label {
+    font-family: var(--font-display);
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--fg2);
+  }
+  .topbar-title {
+    font-family: var(--font-display);
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .theme-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg2);
+    cursor: pointer;
+    font-size: .78rem;
+    padding: .28rem .6rem;
+    font-family: var(--font-body);
+  }
+  .theme-btn:hover { color: var(--fg); }
+
+  /* ── Article layout ── */
+  .article {
+    max-width: 740px;
+    margin: 0 auto;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 4rem 0 2.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 3rem;
+  }
+  .hero-eyebrow {
+    font-family: var(--font-mono);
+    font-size: .78rem;
+    color: var(--accent);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: .6rem;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin-bottom: 1rem;
+    color: var(--fg);
+  }
+  .hero-sub {
+    font-size: 1.1rem;
+    color: var(--fg2);
+    max-width: 55ch;
+    text-wrap: balance;
+  }
+
+  /* ── Pipeline diagram ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 1.5rem 0;
+    margin-bottom: 2.5rem;
+  }
+  .pipe-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .3rem;
+    flex-shrink: 0;
+  }
+  .pipe-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .45rem .8rem;
+    font-family: var(--font-mono);
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .pipe-box.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg2));
+  }
+  .pipe-label {
+    font-size: .68rem;
+    color: var(--fg2);
+    text-align: center;
+  }
+  .pipe-arrow {
+    color: var(--fg2);
+    font-size: .9rem;
+    padding: 0 .3rem;
+    flex-shrink: 0;
+    padding-bottom: 1.2rem;
+  }
+
+  /* ── Sections ── */
+  .section {
+    margin-bottom: 3.5rem;
+  }
+  .section-num {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    color: var(--accent);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: .4rem;
+  }
+  .section h2 {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-wrap: balance;
+    margin-bottom: 1rem;
+    color: var(--fg);
+  }
+  .section h3 {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 1.6rem 0 .6rem;
+    color: var(--fg);
+  }
+  p { margin-bottom: 1rem; color: var(--fg); }
+
+  /* ── Code blocks ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem 1.2rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-family: var(--font-mono);
+    font-size: .82rem;
+    line-height: 1.65;
+    color: var(--fg);
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: .84em;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: .1em .3em;
+    color: var(--fg);
+  }
+  pre code { background: none; border: none; padding: 0; font-size: 1em; }
+
+  .kw  { color: #c792ea; }
+  .fn  { color: #82aaff; }
+  .str { color: #c3e88d; }
+  .num { color: #f78c6c; }
+  .cm  { color: #546e7a; font-style: italic; }
+  .op  { color: var(--accent); }
+
+  /* ── Callout boxes ── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg2));
+    border-radius: 0 8px 8px 0;
+    padding: .9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: .93rem;
+  }
+  .callout.info { border-color: var(--accent2); background: color-mix(in srgb, var(--accent2) 7%, var(--bg2)); }
+  .callout.warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, var(--bg2)); }
+  .callout strong { color: var(--fg); }
+
+  /* ── Math formula display ── */
+  .formula {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.4rem;
+    margin: 1.2rem 0;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    text-align: center;
+    color: var(--fg);
+    letter-spacing: .02em;
+  }
+  .formula .label {
+    font-size: .72rem;
+    color: var(--fg2);
+    display: block;
+    margin-top: .3rem;
+    font-family: var(--font-body);
+  }
+
+  /* ── Interactive colour demo ── */
+  .demo-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.4rem;
+    margin: 1.4rem 0;
+  }
+  .demo-card h4 {
+    font-family: var(--font-display);
+    font-size: .9rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--fg2);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-bottom: 1rem;
+  }
+  .swatch-btn {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    background: var(--bg3);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    padding: .3rem .6rem .3rem .3rem;
+    font-size: .78rem;
+    font-family: var(--font-body);
+    color: var(--fg2);
+    transition: border-color .15s;
+  }
+  .swatch-btn:hover, .swatch-btn.selected {
+    border-color: var(--accent);
+    color: var(--fg);
+  }
+  .swatch-dot {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,.12);
+    flex-shrink: 0;
+  }
+
+  .score-display {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .8rem;
+    margin-top: .8rem;
+  }
+  .score-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .8rem 1rem;
+  }
+  .score-name {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    color: var(--fg2);
+    margin-bottom: .3rem;
+  }
+  .score-val {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-bar-wrap {
+    height: 6px;
+    background: var(--bg);
+    border-radius: 3px;
+    margin-top: .4rem;
+    overflow: hidden;
+  }
+  .score-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width .2s, background .2s;
+  }
+
+  /* ── Ramp visualiser ── */
+  .ramp-vis {
+    position: relative;
+    height: 60px;
+    background: var(--bg3);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: .8rem 0;
+  }
+  .ramp-canvas { width: 100%; height: 100%; display: block; }
+  .ramp-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    color: var(--fg2);
+    margin-top: .3rem;
+  }
+
+  /* ── Pipeline steps list ── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 1.2rem 0;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr;
+    gap: 0 1rem;
+    position: relative;
+  }
+  .step::before {
+    content: '';
+    position: absolute;
+    left: 1.05rem;
+    top: 2.2rem;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+  .step:last-child::before { display: none; }
+  .step-num {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .step-body {
+    padding: .2rem 0 1.6rem;
+  }
+  .step-title {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: .3rem;
+    color: var(--fg);
+  }
+  .step-desc {
+    font-size: .9rem;
+    color: var(--fg2);
+    margin: 0;
+  }
+
+  /* ── Table ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .88rem;
+    margin: 1rem 0;
+  }
+  .data-table th {
+    text-align: left;
+    font-family: var(--font-display);
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--fg2);
+    border-bottom: 2px solid var(--border);
+    padding: .5rem .7rem;
+  }
+  .data-table td {
+    padding: .55rem .7rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table td:first-child { font-family: var(--font-mono); font-size: .82rem; }
+
+  /* ── Quiz ── */
+  .quiz {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.4rem;
+    margin: 1.4rem 0;
+  }
+  .quiz h4 {
+    font-family: var(--font-display);
+    font-size: .9rem;
+    font-weight: 600;
+    margin-bottom: .8rem;
+    color: var(--accent2);
+  }
+  .quiz-q { font-weight: 500; margin-bottom: .8rem; }
+  .quiz-options { display: flex; flex-direction: column; gap: .4rem; }
+  .quiz-opt {
+    background: var(--bg3);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: .9rem;
+    padding: .6rem .9rem;
+    text-align: left;
+    color: var(--fg);
+    font-family: var(--font-body);
+    transition: border-color .15s;
+  }
+  .quiz-opt:hover { border-color: var(--accent2); }
+  .quiz-opt.correct { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg3)); }
+  .quiz-opt.wrong   { border-color: #ef4444; background: color-mix(in srgb, #ef4444 10%, var(--bg3)); }
+  .quiz-feedback {
+    display: none;
+    margin-top: .8rem;
+    font-size: .88rem;
+    padding: .6rem .9rem;
+    border-radius: 8px;
+    background: var(--bg3);
+    color: var(--fg2);
+  }
+  .quiz-feedback.show { display: block; }
+
+  /* ── Exercises ── */
+  .exercises {
+    background: color-mix(in srgb, var(--warn) 7%, var(--bg2));
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border));
+    border-radius: 12px;
+    padding: 1.4rem;
+    margin: 2rem 0;
+  }
+  .exercises h3 {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--warn);
+    margin: 0 0 .8rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-size: .82rem;
+  }
+  .exercises ol { padding-left: 1.3rem; }
+  .exercises li { margin-bottom: .6rem; font-size: .92rem; }
+
+  /* ── Summary box ── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: .8rem;
+    margin: 1.2rem 0;
+  }
+  .summary-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .9rem 1rem;
+  }
+  .summary-card .s-key {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    color: var(--accent);
+    margin-bottom: .3rem;
+  }
+  .summary-card .s-val {
+    font-size: .88rem;
+    color: var(--fg2);
+  }
+
+  @media (max-width: 520px) {
+    .score-display { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 1.7rem; }
+  }
+</style>
+
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:.7rem;">
+    <span class="topbar-label">Lab 02–06</span>
+    <span class="topbar-title">Centerline Detection</span>
+  </div>
+  <button class="theme-btn" onclick="toggleTheme()">Toggle theme</button>
+</div>
+
+<div class="article">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-eyebrow">Lesson 01 · Computer Vision</div>
+    <h1>How the F1 racer finds the centre of the track</h1>
+    <p class="hero-sub">From raw RGB pixels to lateral error and heading — no neural network, just geometry and colour math.</p>
+  </div>
+
+  <!-- PIPELINE OVERVIEW -->
+  <div class="section">
+    <div class="section-num">00 · Overview</div>
+    <h2>The five-block pipeline</h2>
+    <p>Every control step runs this sequence. Each block takes simple input and produces simple output — the design is easy to debug because you can inspect every intermediate value.</p>
+
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-box">frame</div>
+        <div class="pipe-label">128×128 RGB</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-box active">mask</div>
+        <div class="pipe-label">paint 0..1</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-box">scan</div>
+        <div class="pipe-label">line x per row</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-box">centre</div>
+        <div class="pipe-label">left/right/mid</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-box">camera</div>
+        <div class="pipe-label">px → metres</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-box">errors</div>
+        <div class="pipe-label">e_lat e_head conf</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Mask — which pixels are yellow paint?</div>
+          <p class="step-desc">Score each pixel with <code>min(R,G) − B</code>. Apply a soft ramp to get a 0..1 float image. Lab 02.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Scan — where does each line cross a row?</div>
+          <p class="step-desc">Average a band of rows into a 1-D profile, then find every run of yellow in it and its centroid. Lab 03.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Camera — convert pixel columns to metres</div>
+          <p class="step-desc">Flat-ground pinhole model: row gives distance, column offset gives lateral metres. Calibrated from one straight frame. Lab 04.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Centre — which blobs are the boundaries?</div>
+          <p class="step-desc">Pick the pair of blobs whose spacing matches the expected track width. If only one line is visible, offset it by half a track width. Lab 05.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Errors — compute e_lat and e_heading</div>
+          <p class="step-desc">Lateral offset = deviation of near centre from optical axis. Heading = angle between near and far centre points. Lab 06.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 1: COLOUR MASK -->
+  <div class="section">
+    <div class="section-num">01 · Lab 02</div>
+    <h2>Block 1 — Colour mask</h2>
+
+    <p>The first question: which pixels are yellow paint? We need a single number per pixel that is high for yellow and near zero for everything else on the track.</p>
+
+    <h3>Why not just threshold RGB directly?</h3>
+    <p>Yellow paint in different lighting conditions can have very different absolute RGB values. A pixel in shadow might be <code>(120, 98, 0)</code> while the same paint in bright light is <code>(255, 209, 0)</code>. We need a score that captures <em>relative</em> channel strength, not absolute values.</p>
+
+    <h3>The yellowness score</h3>
+    <p>Yellow means <strong>both red AND green are high, while blue is low</strong>. Two candidate formulas:</p>
+
+    <div class="demo-card">
+      <h4>Try a colour — compare the two scores</h4>
+      <div class="swatches" id="swatchList"></div>
+      <div class="score-display">
+        <div class="score-box">
+          <div class="score-name">R + G − 2B</div>
+          <div class="score-val" id="scoreA">—</div>
+          <div class="score-bar-wrap"><div class="score-bar" id="barA" style="width:0;background:var(--accent2)"></div></div>
+        </div>
+        <div class="score-box">
+          <div class="score-name">min(R, G) − B</div>
+          <div class="score-val" id="scoreB">—</div>
+          <div class="score-bar-wrap"><div class="score-bar" id="barB" style="width:0;background:var(--accent)"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <p>Try the <strong>red curb</strong> swatch above. <code>R + G − 2B</code> fires on red because R alone is high. <code>min(R,G) − B</code> stays near zero because min(255, 30) = 30, and 30 − 30 ≈ 0. <strong>Yellow requires both R and G to be high.</strong></p>
+
+    <div class="callout">
+      <strong>Key insight:</strong> <code>min(R, G) − B</code> can only be large when both R and G exceed B simultaneously. That is the definition of yellow. Red, green, and grey all fail this test.
+    </div>
+
+    <h3>From score to soft mask</h3>
+    <p>Instead of a hard threshold (0 or 1), we use a <em>linear ramp</em> between two values <code>low</code> and <code>high</code>:</p>
+
+    <div class="formula">
+      mask = clip( (score − low) / (high − low),  0,  1 )
+      <span class="label">soft ramp — values between low and high get fractional weights</span>
+    </div>
+
+    <p>Why not a hard threshold? The lane lines are rendered with anti-aliasing — their edges are fractional pixels. A hard threshold would snap those edge pixels to 0 or 1, losing sub-pixel position information. The soft ramp preserves it, giving the scanner in the next block more precision.</p>
+
+    <div class="ramp-vis">
+      <canvas class="ramp-canvas" id="rampCanvas"></canvas>
+    </div>
+    <div class="ramp-labels">
+      <span>score = 0</span>
+      <span>low = 0.15 → mask starts</span>
+      <span>high = 0.40 → mask = 1</span>
+      <span>score = 1</span>
+    </div>
+
+    <h3>The final code</h3>
+<pre><span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="kw">def</span> <span class="fn">to_float</span>(frame):
+    <span class="cm"># uint8 (0-255) → float32 (0.0-1.0)</span>
+    <span class="kw">return</span> frame[..., :3].astype(np.float32) / <span class="num">255.0</span>
+
+<span class="kw">def</span> <span class="fn">yellowness</span>(rgb):
+    <span class="cm"># high only when BOTH red AND green exceed blue</span>
+    <span class="kw">return</span> np.minimum(rgb[..., <span class="num">0</span>], rgb[..., <span class="num">1</span>]) - rgb[..., <span class="num">2</span>]
+
+<span class="kw">def</span> <span class="fn">yellow_mask</span>(rgb, low=<span class="num">0.15</span>, high=<span class="num">0.40</span>):
+    <span class="cm"># soft 0..1 mask: 0 below low, linear ramp, 1 above high</span>
+    score = <span class="fn">yellowness</span>(rgb)
+    <span class="kw">return</span> np.clip((score - low) / (high - low), <span class="num">0.0</span>, <span class="num">1.0</span>)</pre>
+
+    <div class="quiz" id="q1">
+      <h4>Check your understanding</h4>
+      <p class="quiz-q">A pixel is <code>(200, 30, 30)</code> (red curb). What does <code>min(R,G) − B</code> return?</p>
+      <div class="quiz-options">
+        <button class="quiz-opt" onclick="answer('q1',this,false)">170 — it fires because R is very high</button>
+        <button class="quiz-opt" onclick="answer('q1',this,true)">0 — min(200,30) = 30, and 30 − 30 = 0</button>
+        <button class="quiz-opt" onclick="answer('q1',this,false)">−170 — the score goes negative for red</button>
+      </div>
+      <div class="quiz-feedback" id="q1-fb">Correct. min(R,G) picks the smaller of the two, which is G=30. Then 30 − B(30) = 0. The score only fires when BOTH R and G are high, which is what yellow means.</div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: SCAN -->
+  <div class="section">
+    <div class="section-num">02 · Lab 03</div>
+    <h2>Block 2 — Row scan</h2>
+
+    <p>We now have a mask image: each pixel holds a 0..1 "how yellow" value. The next question: <strong>where do the lane lines cross the image at a given distance?</strong></p>
+
+    <h3>Why a band of rows, not one row?</h3>
+    <p>From Lab 01, each row maps to one ground distance. The detector reads two <em>bands</em> — a few rows near the car and a few further ahead. Averaging the rows in a band into one 1-D <strong>profile</strong> cancels pixel noise while keeping the distance roughly fixed.</p>
+
+    <h3>Finding the lines in the profile</h3>
+    <p>Mark every column where the profile is above <code>level = 0.1</code>. Each continuous <em>run</em> of marked columns is one candidate line. Its position is the <strong>centre of mass</strong> of the run:</p>
+
+    <div class="formula">
+      u_line = Σ(u · p[u]) / Σ(p[u])
+      <span class="label">weighted average of column centres inside one run — sub-pixel precision</span>
+    </div>
+
+    <p>The run's total <code>mass</code> (sum of profile values, roughly line width in px) filters out specks: runs lighter than <code>min_mass = 1.0</code> are dropped. Runs touching the image edge are flagged <code>clipped</code> — partly out of view, so their centroid is biased.</p>
+
+    <div class="callout info">
+      <strong>No left/right split.</strong> The scanner does not assume one line left of centre and one right. It returns every blob, left to right. Deciding which blobs are the boundaries is the next block's job — that keeps the scanner simple and lets the centre block handle sharp turns where both lines sit on one side.
+    </div>
+
+<pre><span class="kw">def</span> <span class="fn">band_profile</span>(mask, rows):
+    r0, r1 = rows
+    <span class="kw">return</span> mask[r0:r1].mean(axis=<span class="num">0</span>)          <span class="cm"># (W,) profile</span>
+
+<span class="kw">def</span> <span class="fn">find_lines</span>(profile, level=<span class="num">0.1</span>, min_mass=<span class="num">1.0</span>):
+    on = np.concatenate([[<span class="kw">False</span>], profile > level, [<span class="kw">False</span>]])
+    edges = np.flatnonzero(on[<span class="num">1</span>:] != on[:-<span class="num">1</span>])  <span class="cm"># run starts and ends</span>
+    lines = []
+    <span class="kw">for</span> start, end <span class="kw">in</span> zip(edges[::<span class="num">2</span>], edges[<span class="num">1</span>::<span class="num">2</span>]):
+        p = profile[start:end]
+        mass = p.sum()
+        <span class="kw">if</span> mass < min_mass: <span class="kw">continue</span>
+        u = (p * (np.arange(start, end) + <span class="num">0.5</span>)).sum() / mass
+        lines.append(Line(u, mass, clipped=start == <span class="num">0</span> <span class="kw">or</span> end == len(profile)))
+    <span class="kw">return</span> lines</pre>
+  </div>
+
+  <!-- SECTION 3: CAMERA -->
+  <div class="section">
+    <div class="section-num">03 · Lab 04</div>
+    <h2>Block 3 — Camera model</h2>
+
+    <p>Scan gives pixel columns. The car needs <strong>metres</strong>. The camera sits at height <code>h</code> above flat ground, so every ground pixel has a known 3-D position. Two formulas do all the work:</p>
+
+    <div class="formula">
+      z = focal · h / (v − v_horizon)
+      <span class="label">row → distance ahead. Rows near the horizon: tiny denominator, huge z</span>
+    </div>
+    <div class="formula">
+      x = h · (u − cx) / (v − v_horizon)
+      <span class="label">column → lateral metres. Note: focal cancels out</span>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>symbol</th><th>meaning</th><th>units</th><th>known from</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>u, v</td><td>pixel column, row</td><td>px</td><td>scan</td></tr>
+        <tr><td>cx</td><td>optical axis = W/2</td><td>px</td><td>frame size</td></tr>
+        <tr><td>v_horizon</td><td>row where ground meets sky</td><td>px</td><td>calibration</td></tr>
+        <tr><td>h</td><td>camera height above ground</td><td>m</td><td>car geometry</td></tr>
+        <tr><td>focal</td><td>focal length</td><td>px</td><td>camera spec</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Calibration from one straight frame</h3>
+    <p>Lab 01 showed track width in pixels is linear in <code>v</code> and hits zero at the horizon. So: fit a line to <code>(right_u − left_u)</code> versus <code>v</code>. Where that line crosses zero is <code>v_horizon</code>. One straight-track frame calibrates the camera.</p>
+
+    <div class="callout info">
+      <strong>Why (v − v_horizon) is everywhere:</strong> it measures how far below the horizon a row sits. Small value = far away, where one pixel covers lots of ground. Dividing by it undoes perspective compression.
+    </div>
+  </div>
+
+  <!-- SECTION 4: CENTRE + ERRORS -->
+  <div class="section">
+    <div class="section-num">04 · Labs 05 & 06</div>
+    <h2>Blocks 4 & 5 — Centre and errors</h2>
+
+    <h3>Which blobs are the boundaries?</h3>
+    <p>Scan may return zero, one, two, or more blobs (an orange cone passes the mask). The camera model tells us how wide the track <em>should</em> look on this band: <code>2 · half_px</code> pixels. The centre block tries three cases in order:</p>
+
+    <table class="data-table">
+      <thead><tr><th>case</th><th>rule</th><th>confidence</th></tr></thead>
+      <tbody>
+        <tr><td>pair</td><td>pick the two blobs whose spacing best matches 2·half_px (within 35%). Centre = midpoint</td><td>1 − err/0.35</td></tr>
+        <tr><td>single</td><td>one usable blob: guess it is left (centre = u + half_px) or right (u − half_px), whichever lands closer to last frame's centre</td><td>0.5</td></tr>
+        <tr><td>none</td><td>no blobs: keep last frame's estimate</td><td>0</td></tr>
+      </tbody>
+    </table>
+    <p>Clipped blobs multiply confidence by 0.8. Width matching rejects the cone: cone + line spacing will not match the expected track width.</p>
+
+    <div class="callout warn">
+      <strong>Memory matters.</strong> The <em>prior</em> — last frame's centre — resolves the single-line ambiguity. Without it, one visible line on a turn could be read as either boundary, and the estimate would jump by a full track width.
+    </div>
+
+    <p>This runs on two bands: <strong>near</strong> (close, precise) and <strong>far</strong> (distant, sees curves early). Each centre is converted to metres with the camera model.</p>
+
+    <h3>Computing the control errors</h3>
+
+    <table class="data-table">
+      <thead><tr><th>output</th><th>formula</th><th>meaning</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>e_lat</td>
+          <td>clip(x_near / half_width, −1, 1)</td>
+          <td>−1 = on left boundary, 0 = centred, +1 = on right boundary</td>
+        </tr>
+        <tr>
+          <td>e_heading</td>
+          <td>atan2(x_far − x_near, z_far − z_near)</td>
+          <td>angle of the track relative to the car (rad)</td>
+        </tr>
+        <tr>
+          <td>confidence</td>
+          <td>(conf_near + conf_far) / 2</td>
+          <td>0 = no detection, 1 = clean pair on both bands</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>e_lat</strong> tells the car: how far off-centre am I <em>right now</em>?<br>
+      <strong>e_heading</strong> tells the car: which way is the track pointing ahead?<br>
+      Together they let PPO learn a steering policy without ever seeing raw pixels.
+    </div>
+  </div>
+
+  <!-- QUIZ 2 -->
+  <div class="section">
+    <div class="section-num">05 · Self-test</div>
+    <h2>Check your understanding</h2>
+
+    <div class="quiz" id="q2">
+      <h4>Question 1</h4>
+      <p class="quiz-q">The car is perfectly centred and the track is straight ahead. What are the expected values of <code>e_lat</code> and <code>e_heading</code>?</p>
+      <div class="quiz-options">
+        <button class="quiz-opt" onclick="answer('q2',this,true)">e_lat = 0,  e_heading = 0</button>
+        <button class="quiz-opt" onclick="answer('q2',this,false)">e_lat = 1,  e_heading = 0</button>
+        <button class="quiz-opt" onclick="answer('q2',this,false)">e_lat = 0,  e_heading = π/2</button>
+      </div>
+      <div class="quiz-feedback" id="q2-fb">Correct. Centred means x_centre = 0, so e_lat = 0/half_width = 0. Straight ahead means x_far ≈ x_near, so the angle is atan2(0, Δz) = 0.</div>
+    </div>
+
+    <div class="quiz" id="q3">
+      <h4>Question 2</h4>
+      <p class="quiz-q">Why do we use <code>min(R,G) − B</code> instead of just <code>R − B</code>?</p>
+      <div class="quiz-options">
+        <button class="quiz-opt" onclick="answer('q3',this,false)">min() is cheaper to compute than subtraction</button>
+        <button class="quiz-opt" onclick="answer('q3',this,true)">R − B also fires on red objects; min(R,G) requires both R and G to be high, which is specific to yellow</button>
+        <button class="quiz-opt" onclick="answer('q3',this,false)">R − B would give negative values for blue pixels</button>
+      </div>
+      <div class="quiz-feedback" id="q3-fb">Correct. R − B is large for any reddish pixel (R=200, G=30, B=30 → 170). min(R,G) − B is large only when both R and G exceed B, which describes yellow and orange but not red or green.</div>
+    </div>
+  </div>
+
+  <!-- EXERCISES -->
+  <div class="exercises">
+    <h3>Hands-on exercises — do these in the notebooks</h3>
+    <ol>
+      <li><strong>Lab 02, cell 1:</strong> Add dirty-white paint <code>(220, 215, 170)</code> to the swatches. Run the score comparison. Does it pass the mask? What does <code>min(R,G) − B</code> return?</li>
+      <li><strong>Lab 02, cell 2:</strong> Switch the mask to <code>R + G − 2B</code>. Add a red-curb patch and compare the two masks visually. Explain what you see.</li>
+      <li><strong>Lab 03:</strong> Run <code>find_lines</code> on a straight track vs <code>yaw=0.2</code>. Which band's centroids move more — near or far? Predict first, then check.</li>
+      <li><strong>Lab 04:</strong> Look at <code>x = h·(u − cx)/(v − v_horizon)</code>. If <code>v_horizon</code> is calibrated 3 px too high, are lateral errors on the far band too big or too small?</li>
+      <li><strong>Lab 05:</strong> Put an orange cone next to the left line. Does <code>estimate_centre</code> still return a <code>"pair"</code>? Which rule saved it?</li>
+    </ol>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="section">
+    <div class="section-num">06 · Summary</div>
+    <h2>What you learned</h2>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="s-key">yellowness score</div>
+        <div class="s-val"><code>min(R,G) − B</code> — only fires for yellow, not red or green</div>
+      </div>
+      <div class="summary-card">
+        <div class="s-key">soft mask</div>
+        <div class="s-val">linear ramp between low/high preserves anti-aliased sub-pixel info</div>
+      </div>
+      <div class="summary-card">
+        <div class="s-key">row centroid</div>
+        <div class="s-val">weighted average of pixel positions — sub-pixel precision</div>
+      </div>
+      <div class="summary-card">
+        <div class="s-key">pinhole equation</div>
+        <div class="s-val"><code>x = (u − W/2) · z / focal</code> — converts pixel offset to metres</div>
+      </div>
+      <div class="summary-card">
+        <div class="s-key">e_lat</div>
+        <div class="s-val">how far off centre the car is right now (normalised ±1)</div>
+      </div>
+      <div class="summary-card">
+        <div class="s-key">e_heading</div>
+        <div class="s-val">angle of track ahead relative to car heading (radians)</div>
+      </div>
+    </div>
+    <p style="margin-top:1.4rem;color:var(--fg2);font-size:.9rem;"><strong style="color:var(--fg);">Next lesson:</strong> PyTorch fundamentals — tensors, autograd, and your first neural network trained on this exact dataset.</p>
+  </div>
+
+</div><!-- /article -->
+
+<script>
+// ── theme toggle ──
+function toggleTheme() {
+  const r = document.documentElement;
+  const t = r.getAttribute('data-theme');
+  r.setAttribute('data-theme', t === 'dark' ? 'light' : 'dark');
+}
+
+// ── colour swatches ──
+const SWATCHES = [
+  { name: 'yellow',       rgb: [255, 209, 0]   },
+  { name: 'yellow shadow',rgb: [120, 98,  0]   },
+  { name: 'yellow glare', rgb: [255, 250, 190] },
+  { name: 'asphalt',      rgb: [31,  31,  31]  },
+  { name: 'white',        rgb: [255, 255, 255] },
+  { name: 'red curb',     rgb: [200, 30,  30]  },
+  { name: 'orange cone',  rgb: [255, 130, 0]   },
+  { name: 'grass',        rgb: [60,  140, 50]  },
+  { name: 'sky',          rgb: [62,  68,  82]  },
+];
+
+function scoreA(r,g,b){ return r/255 + g/255 - 2*b/255; }
+function scoreB(r,g,b){ return Math.min(r/255, g/255) - b/255; }
+
+function renderSwatches() {
+  const wrap = document.getElementById('swatchList');
+  SWATCHES.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'swatch-btn' + (i === 0 ? ' selected' : '');
+    btn.dataset.idx = i;
+    const dot = document.createElement('span');
+    dot.className = 'swatch-dot';
+    dot.style.background = `rgb(${s.rgb.join(',')})`;
+    btn.appendChild(dot);
+    btn.appendChild(document.createTextNode(s.name));
+    btn.addEventListener('click', () => selectSwatch(i));
+    wrap.appendChild(btn);
+  });
+  selectSwatch(0);
+}
+
+function selectSwatch(idx) {
+  document.querySelectorAll('.swatch-btn').forEach((b,i) => b.classList.toggle('selected', i === idx));
+  const [r,g,b] = SWATCHES[idx].rgb;
+  const a = scoreA(r,g,b);
+  const bv = scoreB(r,g,b);
+
+  const fmtScore = v => (v >= 0 ? '+' : '') + v.toFixed(3);
+  const pct = v => Math.max(0, Math.min(100, (v / 1.5) * 100)) + '%';
+
+  document.getElementById('scoreA').textContent = fmtScore(a);
+  document.getElementById('scoreB').textContent = fmtScore(bv);
+  document.getElementById('barA').style.width = pct(a);
+  document.getElementById('barA').style.background = a > 0.3 ? 'var(--accent2)' : 'var(--fg2)';
+  document.getElementById('barB').style.width = pct(bv);
+  document.getElementById('barB').style.background = bv > 0.3 ? 'var(--accent)' : 'var(--fg2)';
+}
+
+// ── ramp canvas ──
+function drawRamp() {
+  const canvas = document.getElementById('rampCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+
+  for (let x = 0; x < W; x++) {
+    const score = x / W;
+    const mask = Math.max(0, Math.min(1, (score - 0.15) / 0.25));
+    const g = Math.round(mask * 180);
+    ctx.fillStyle = `rgb(${g},${Math.round(mask*220)},${g})`;
+    ctx.fillRect(x, 0, 1, H);
+  }
+
+  // threshold markers
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,3]);
+  [0.15, 0.40].forEach(t => {
+    const x = t * W;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  });
+}
+
+// ── quiz ──
+function answer(qId, btn, correct) {
+  const quiz = document.getElementById(qId);
+  if (quiz.dataset.answered) return;
+  quiz.dataset.answered = '1';
+  btn.classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) {
+    quiz.querySelectorAll('.quiz-opt').forEach(b => {
+      if (b !== btn) b.classList.add('correct');
+    });
+  }
+  const fb = document.getElementById(qId + '-fb');
+  fb.classList.add('show');
+}
+
+renderSwatches();
+drawRamp();
+window.addEventListener('resize', drawRamp);
+</script>
+
+</html>
