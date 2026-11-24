@@ -6,7 +6,7 @@
 html{color-scheme:light;background:#fff}
 :root{
   --bg:#ffffff;--fg:#111111;--mut:#4a5058;--line:#e4e1da;--card:#ffffff;--acc:#e8590c;--tint:#fff4ec;
-  /* names read by course/assets/figures.js */
+  /* names read by assets/figures.js */
   --ink:#111111;--ink-2:#4a5058;--rule:#d9d5cc;--near:#1c7ed6;--far:#7950f2;--yellow:#fcc419;
   --bad:#e8590c;--good:#2f9e44;--panel:#f4f3ef;--mono:ui-monospace,Menlo,monospace;
 }
