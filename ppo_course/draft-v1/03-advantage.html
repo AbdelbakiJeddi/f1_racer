@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3 · Value and advantage</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>3 · Value and advantage</h1><p class="sub">A reward of 0.13 is great on a hard bend and poor on a straight. PPO needs the comparison.</p><nav id="nav"></nav>
+<section><h2>Value: what to expect from here</h2>
+<p>The critic learns <b>V(s)</b>: the return expected from state s. It is trained to predict what really happened (<code>Loss/value</code> is its error).</p><figure><div id="v"></div><figcaption>Same car, three states, three expectations.</figcaption></figure><div class="key"><b>Advantage = what happened − what was expected.</b> Positive: do that more. Negative: do it less.</div>
+</section>
+<section><h2>One-step surprise: δ</h2>
+<div class='read'>δₜ = rₜ + γ·V(next) − V(now)</div><p>δ is the surprise of a single step. It is fast but trusts the critic completely.</p><div class="scroll"><table class="props"><tr><th>Estimate</th><th>Uses</th><th>Bias</th><th>Noise</th></tr><tr><td>δ only (λ = 0)</td><td>one reward + critic</td><td>high if critic is wrong</td><td>low</td></tr><tr><td>full return (λ = 1)</td><td>all real rewards</td><td>none</td><td>high</td></tr><tr><td>GAE (λ = 0.95)</td><td>blend of all horizons</td><td>small</td><td>moderate</td></tr></table></div><div class='read'>Aₜ = δₜ + γλ·Aₜ₊₁        (computed backwards, from the last step)</div>
+</section>
+<section><h2>Play with GAE</h2>
+<p>Eight steps. The car drives well, then drifts toward the line. Move λ and choose the ending.</p><div class='widget'><div class='ctl'><label>λ <input type="range" id="lam" min="0" max="1" step="0.01" value="0.95"><output id="lam-o"></output></label><label>γ <input type="range" id="gam" min="0.8" max="0.999" step="0.001" value="0.99"><output id="gam-o"></output></label><label>ending <select id='end'><option value='fail'>off_track (failure)</option><option value='time'>time_out (bootstrap)</option></select></label></div><div id='gae'></div><div class='scroll' id='gae-t'></div></div><div class="key"><b>Watch the ending.</b> Failure: nothing comes after, so the bad ending leaks backwards and every advantage turns negative. Lower λ to keep the blame near the end. Time-out: the code adds γ·V so a good car is not punished because the clock stopped.</div>
+</section>
+<section><h2>Two details in your code</h2>
+<div class="grid2"><div class="card"><h4>Normalised advantages</h4>rsl_rl shifts advantages to mean 0, std 1 before learning. Only the <b>ranking</b> matters, not the reward scale here.</div><div class="card"><h4>Returns = targets</h4>The critic is trained toward <code>return = A + V</code>.</div></div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('03-advantage');
+svg('v',720,130, box(20,30,200,70,['centred, straight','V ≈ 13'],{col:C.good})+box(260,30,200,70,['drifting to the line','V ≈ 6'],{col:C.mut})+box(500,30,200,70,['wheel almost touching','V ≈ 1'],{col:C.acc})+T(360,120,'illustrative values',{col:C.mut,size:11}));
+const rew=[.13,.13,.13,.12,.09,.06,.03,.01], val=[10,10,10,9.6,8.5,7,5,3];
+bind(['lam','gam','end'],v=>{
+ const n=rew.length, d=[], A=[]; let next=0, adv=0;
+ for(let t=n-1;t>=0;t--){ const nv= t===n-1 ? (v.end==='time'?val[t]:0) : val[t+1]; d[t]=rew[t]+v.gam*nv-val[t]; adv=d[t]+(t===n-1?0:v.gam*v.lam*adv); A[t]=adv; }
+ chart('gae',[{pts:d.map((y,i)=>[i,y]),col:C.mut,label:'δ',dots:true,dash:true},{pts:A.map((y,i)=>[i,y]),col:C.acc,label:'advantage A',dots:true},{pts:[[0,0],[n-1,0]],col:C.line}],{xl:'step',h:230});
+ const row=(h,a)=>`<tr><th class="l">${h}</th>${a.map(x=>`<td>${typeof x==='number'?x.toFixed(2):x}</td>`).join('')}</tr>`;
+ $('gae-t').innerHTML='<table>'+row('step',[0,1,2,3,4,5,6,7].map(String))+row('reward r',rew)+row('critic V',val)+row('δ',d)+row('A',A)+row('critic target A+V',A.map((a,i)=>a+val[i]))+'</table>';
+});
+</script></body></html>

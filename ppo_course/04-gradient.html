@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>4 · The policy gradient</title><link rel="stylesheet" href="assets/course.css"></head><body><main>
+<h1>4 · The policy gradient</h1><p class="sub">How to improve a policy through a simulator you cannot differentiate.</p><nav id="nav"></nav>
+<section><h2>We cannot differentiate the world<span class="sl">the problem</span></h2>
+<div class="split"><div><p class="lead">Goal: change the actor weights θ so that the expected return J(θ) goes up. Gradient ascent needs ∂J/∂θ.</p>
+<p>But the chain θ → action → <i>physics, camera, detector</i> → reward goes through a simulator we cannot differentiate. PhysX gives no gradients; even if it did, contacts make them meaningless.</p>
+<p>The <b>policy gradient</b> gets the gradient anyway, without touching the simulator. The trick: differentiate the <i>probability</i> of the actions, which we own, not the world.</p></div><div><figure><div id="chain"></div><figcaption>The gradient path. Orange: no gradient exists. Green: the only part we can differentiate.</figcaption></figure></div></div>
+</section>
+<section><h2>The log-derivative trick<span class="sl">derivation, one line at a time</span></h2>
+<div class="split"><div><p>Start with a single decision (a 'bandit'): one action a ∼ π<sub>θ</sub>, one reward R(a).</p><div class='eq'>J(θ) = E<sub>a∼π<sub>θ</sub></sub>[ R(a) ] = ∫ π<sub>θ</sub>(a) R(a) da
+
+∇J = ∫ ∇π<sub>θ</sub>(a) R(a) da                    R does not depend on θ
+   = ∫ π<sub>θ</sub>(a) ∇log π<sub>θ</sub>(a) R(a) da        because ∇π = π·∇log π
+   = E<sub>a∼π<sub>θ</sub></sub>[ R(a) · ∇log π<sub>θ</sub>(a) ]</div><p>The last line is an <b>expectation</b>, so we can estimate it by sampling: try N actions, then average R·∇log π.</p></div><div><h3>What it means</h3>
+<p>For each sampled action, ∇log π points in the direction that makes that action <i>more likely</i>. Weight it by how good the action was. Good actions pull the policy toward themselves, bad ones push it away.</p>
+<p>With the Gaussian of page 3, ∇<sub>μ</sub> log π = (a − μ)/σ². So the update of the mean is:</p><div class='eq'>Δμ ∝ average of  R(a) · (a − μ) / σ²</div><p>No physics equation appears anywhere. The simulator only has to return R.</p><div class="key"><b>To remember.</b> Policy gradient = try actions, score them, make the well-scored ones more likely. It works through any black-box environment.</div></div></div>
+</section>
+<section><h2>Break it: a one-step steering bandit<span class="sl">interactive</span></h2>
+<div class="split"><div><p>One decision: choose a steer a. The ideal is a* = 0.1, reward R = −(a − a*)². The policy starts with μ = 0.6. Each iteration samples a batch, estimates the gradient, and moves μ.</p>
+<p>True gradient at μ = 0.6: −2(μ − a*) = −1.0, so μ should go down.</p><div id="pr5"></div><p>Things to try:</p><ul><li>batch 1: μ wanders, sometimes uphill</li><li>σ very small: steps explode (the 1/σ² factor)</li><li>large learning rate: overshoot</li></ul></div><div><div class='widget'><div class='ctl'><label>batch <input type="range" id="bs" min="1" max="256" step="1" value="8"><output id="bs-o"></output></label><label>learning rate <input type="range" id="lr" min="0.001" max="0.1" step="0.001" value="0.02"><output id="lr-o"></output></label><label>σ <input type="range" id="sg" min="0.02" max="0.8" step="0.01" value="0.2"><output id="sg-o"></output></label></div><div id='pg-tl'></div><div id='pg'></div><div id='pg2'></div><div class='read' id='pg-t'></div></div></div></div><div class="scroll"><table class="props"><tr><th>Batch size</th><th>Mean gradient estimate</th><th>Std of the estimate</th><th>Points the wrong way</th></tr><tr><td>1</td><td>−0.97</td><td>2.37</td><td>51 %</td></tr><tr><td>8</td><td>−1.01</td><td>0.84</td><td>6.6 %</td></tr><tr><td>64</td><td>−1.00</td><td>0.30</td><td>0 %</td></tr><tr><td>1024</td><td>−1.00</td><td>0.07</td><td>0 %</td></tr></table></div><p class='small'>Verified with 4000 repeats at μ = 0.6, σ = 0.2. The estimate is unbiased (right on average) but with batch 1 it is a coin flip.</p>
+</section>
+<section><h2>From one action to a whole trajectory<span class="sl">the real case</span></h2>
+<div class="split"><div><p>A trajectory τ = (s₀, a₀, s₁, a₁, …) has probability</p><div class='eq'>p<sub>θ</sub>(τ) = p(s₀) · Π<sub>t</sub> π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>) · P(s<sub>t+1</sub>|s<sub>t</sub>, a<sub>t</sub>)</div><p>Take the log: products become sums. The dynamics terms P do not depend on θ, so their gradient is zero. Only the policy terms remain:</p><div class='eq'>∇log p<sub>θ</sub>(τ) = Σ<sub>t</sub> ∇log π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>)</div><p>This is why the unknown physics drops out: it is a fixed factor in the probability, independent of θ.</p></div><div><div class='eq'>∇J = E[ Σ<sub>t</sub> ∇log π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>) · G<sub>t</sub> ]</div><p>Each action is weighted by the return <b>from its own step onward</b>, G<sub>t</sub>, not the episode's total. An action cannot change rewards that came before it (<b>causality</b>), so including them only adds noise.</p>
+<p>This estimator is called <b>REINFORCE</b> (Williams, 1992). PPO is REINFORCE plus three fixes for its noise and instability.</p></div></div>
+</section>
+<section><h2>Why plain REINFORCE is not enough<span class="sl">the three weaknesses</span></h2>
+<div class="split"><div><div class="scroll"><table class="props"><tr><th>Weakness</th><th>Why</th><th>Fix, later in this course</th></tr><tr><td><b>very noisy</b></td><td>G<sub>t</sub> sums hundreds of random rewards; every action in a good episode gets credit, even the bad ones</td><td>baseline (page 5), GAE (page 6)</td></tr><tr><td><b>scale-dependent</b></td><td>if all returns are positive (yours are), every action is pushed up, just by different amounts</td><td>advantage A = G − V (page 5)</td></tr><tr><td><b>one step per batch</b></td><td>after one update, the data comes from an older policy, so reusing it is not allowed by the derivation</td><td>importance ratio + clip (pages 7–8)</td></tr></table></div></div><div><p><b>The σ effect.</b> The gradient estimate's noise is not monotonic in σ (batch 16, verified):</p><div class="scroll"><table class="props"><tr><th>σ</th><th>Std of the estimate</th></tr><tr><td>0.05</td><td>1.32</td></tr><tr><td>0.2</td><td>0.60</td></tr><tr><td>0.6</td><td>0.77</td></tr></table></div><p>Too small: 1/σ² amplifies every deviation. Too large: rewards of wildly different actions mix. Your init_std = 0.2 sits near the sweet spot of this toy problem.</p></div></div>
+</section>
+<section><h2>In your project<span class="sl">where REINFORCE hides inside PPO</span></h2>
+<div class="split"><div><p>rsl_rl never writes 'REINFORCE'. But look at its loss at the very first gradient step of an iteration, when the new policy still equals the old one (ratio = 1):</p><div class='eq'>surrogate = −A · ratio ,  ratio = π<sub>θ</sub>(a|s) / π<sub>old</sub>(a|s)
+
+∇ratio at θ = θ<sub>old</sub>  =  ∇log π<sub>θ</sub>(a|s)
+⇒ ∇surrogate = −A · ∇log π<sub>θ</sub>(a|s)</div><p>Exactly the policy gradient, with the advantage A in place of G<sub>t</sub>, and a minus sign because optimisers minimise.</p></div><div><div class="anchor"><b>In the project</b><ul style="margin:6px 0 0;padding-left:20px"><li><code>rsl_rl/algorithms/ppo.py:269</code>: ratio = exp(log π_new − log π_old)</li><li><code>rsl_rl/algorithms/ppo.py:270</code>: surrogate = −advantages × ratio</li><li><code>rsl_rl/modules/distribution.py:230</code>: log_prob summed over steer and throttle</li></ul></div><div class="key"><b>To remember.</b> Every PPO update starts as a policy-gradient step. Everything else in PPO controls how far that step may go.</div></div></div>
+</section>
+<details><summary>Deep dive: why ∇π = π·∇log π, and why E[∇log π] = 0</summary><p>From calculus: ∇log f = ∇f / f, so ∇f = f·∇log f. Applied to π<sub>θ</sub>(a) this gives the trick.</p>
+<p>A useful identity follows: E<sub>a∼π</sub>[∇log π(a)] = ∫ ∇π(a) da = ∇∫ π(a) da = ∇1 = 0. The score has zero mean. So subtracting any constant b from R does not change the expected gradient:</p><div class='eq'>E[ (R − b)·∇log π ] = E[ R·∇log π ] − b·0</div><p>…but it can strongly reduce the variance. With b = E[R], the batch-1 estimate in the toy problem drops from std 2.37 to 1.75, and from 51 % to 7 % wrong-sign. That is the <b>baseline</b>, page 5, and V(s) is the natural choice for b.</p></details>
+<div class="pn" id="pn"></div></main>
+<script src="assets/course.js"></script>
+<script>
+nav('04-gradient');
+svg('chain',640,140, box(10,45,90,50,['θ','weights'],{col:C.good})+L([[100,70],[136,70]],{arrow:true,col:C.good})+box(140,45,110,50,['π_θ(a|s)','action prob.'],{col:C.good})+L([[250,70],[286,70]],{arrow:true,col:C.acc})+
+ box(290,45,200,50,['physics, camera, detector','black box'],{col:C.acc})+L([[490,70],[526,70]],{arrow:true,col:C.acc})+box(530,45,100,50,['reward R'])+
+ T(195,30,'differentiable',{col:C.good,size:11})+T(390,30,'no gradient',{col:C.acc,size:11})+T(320,125,'policy gradient: only the green part is differentiated',{size:11,col:C.mut}));
+predict('pr5','with batch 1, in what share of iterations does the gradient estimate point the WRONG way (μ moves up, away from 0.1)?',['about 5 %','about 25 %','about 50 %'],2,
+ '51 %: a single sample is almost a coin flip, though the average over many is exactly right. With batch 8 it drops to 6.6 %, with 64 to 0 %. Your training uses 4096 samples per iteration for this reason.');
+const astar=0.1; let run=[];
+function simulate(v){ run=[]; let mu=0.6; for(let it=0;it<=120;it++){ const s=[]; let g=0; for(let j=0;j<v.bs;j++){ const a=mu+v.sg*randn(); s.push(a); g+=-((a-astar)**2)*(a-mu)/(v.sg*v.sg);} g/=v.bs; run.push({mu,g,s}); mu=mu+v.lr*g; mu=Math.max(-3,Math.min(3,mu)); } }
+const pg=timeline('pg-tl',()=>run.length,k=>{ const h=run[k];
+ chart('pg',[{pts:run.slice(0,k+1).map((r,i)=>[i,r.mu]),col:C.acc,label:'mean μ'},{pts:[[0,astar],[120,astar]],col:C.good,dash:true,label:'best a* = 0.1'}],{xmin:0,xmax:120,ymin:-0.6,ymax:1.2,xl:'iteration',h:220});
+ const W=720,H=120,X=a=>58+(a+1)/2.5*(W-72); let s=L([[58,70],[W-14,70]],{col:C.line})+T(X(astar),100,'a*',{col:C.good})+`<line x1="${X(astar)}" x2="${X(astar)}" y1="40" y2="90" stroke="${C.good}" stroke-dasharray="4 3"/>`+`<line x1="${X(h.mu)}" x2="${X(h.mu)}" y1="35" y2="95" stroke="${C.acc}" stroke-width="2"/>`+T(X(h.mu),28,'μ',{col:C.acc,b:true});
+ h.s.slice(0,64).forEach(a=>{ const R=-((a-astar)**2); s+=`<circle cx="${X(Math.max(-1,Math.min(1.5,a)))}" cy="70" r="4" fill="${C.blue}" opacity="${Math.max(.15,1+R*3)}"/>`; });
+ const gx=Math.max(-150,Math.min(150,h.g*60)); s+=L([[X(h.mu),112],[X(h.mu)+gx,112]],{col:h.g<0?C.good:C.acc,sw:3,arrow:true});
+ for(const t of [-1,-0.5,0,0.5,1,1.5]) s+=T(X(t),H-2,String(t),{size:10,col:C.mut});
+ svg('pg2',W,H,s);
+ const wrong=run.slice(0,k+1).filter(r=>r.g>0&&r.mu>astar).length;
+ $('pg-t').textContent=`iteration ${k}: μ = ${h.mu.toFixed(3)}   gradient estimate ${h.g.toFixed(2)} (true ${(-2*(h.mu-astar)).toFixed(2)})\nwrong-way steps so far: ${wrong} of ${k+1}.  Dots: samples (darker = better reward). Arrow: estimated step direction.`;
+ return 'batch '+$('bs').value; },{ms:90});
+bind(['bs','lr','sg'],v=>{ simulate(v); pg.reset(); });
+</script></body></html>

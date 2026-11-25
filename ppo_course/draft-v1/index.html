@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PPO, learned on an F1 racer</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>PPO, learned on an F1 racer</h1><p class="sub">From the first idea to tuning your own policy. Every number comes from this project.</p><nav id="nav"></nav>
+<figure><div id="map"></div><figcaption>The path. Each block needs the one before it.</figcaption></figure><div class="grid"><a class="card" href="00-loop.html" style="text-decoration:none;color:inherit"><h4>0 · The loop</h4><span class="small">Who sends what to whom</span></a><a class="card" href="01-return.html" style="text-decoration:none;color:inherit"><h4>1 · Reward and return</h4><span class="small">What the car is really maximising</span></a><a class="card" href="02-policy.html" style="text-decoration:none;color:inherit"><h4>2 · The policy</h4><span class="small">A bell curve over actions</span></a><a class="card" href="03-advantage.html" style="text-decoration:none;color:inherit"><h4>3 · Value and advantage</h4><span class="small">Was that action better than usual?</span></a><a class="card" href="04-ppo.html" style="text-decoration:none;color:inherit"><h4>4 · The PPO clip</h4><span class="small">Learn, but in small steps</span></a><a class="card" href="05-iteration.html" style="text-decoration:none;color:inherit"><h4>5 · One iteration</h4><span class="small">The training loop, with real numbers</span></a><a class="card" href="06-read.html" style="text-decoration:none;color:inherit"><h4>6 · Reading the data</h4><span class="small">Every TensorBoard tag</span></a><a class="card" href="07-tune.html" style="text-decoration:none;color:inherit"><h4>7 · Tuning</h4><span class="small">Symptom → cause → knob</span></a><a class="card" href="08-rewards.html" style="text-decoration:none;color:inherit"><h4>8 · Reward design</h4><span class="small">Shape the behaviour you want</span></a><a class="card" href="09-build.html" style="text-decoration:none;color:inherit"><h4>9 · Build from scratch</h4><span class="small">Design checklist, end to end</span></a></div><div class="key"><b>The one sentence.</b> PPO tries slightly different actions, measures which ones paid more than expected, and makes those a bit more likely, never moving too far in one step.</div>
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('index');
+let s=''; const g=[['Basics',['loop','return','policy']],['Core',['value','clip','iteration']],['Practice',['data','tune','rewards','build']]];
+let x=2; g.forEach(([n,items],i)=>{ const w=[190,240,270][i]; s+=R(x,26,w,92,{col:i===2?C.acc:C.fg})+T(x+w/2,18,n,{b:true});
+ items.forEach((t,k)=>{ const bw=(w-16)/items.length; s+=box(x+8+k*bw,48,bw-6,48,[t],{col:C.line}); });
+ if(i<2) s+=L([[x+w+1,72],[x+w+15,72]],{arrow:true}); x+=w+16; });
+svg('map',740,126,s);
+</script></body></html>

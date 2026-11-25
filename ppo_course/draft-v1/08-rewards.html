@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>8 · Reward design</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>8 · Reward design</h1><p class="sub">A reward is a specification. The agent will do exactly what it says, not what you meant.</p><nav id="nav"></nav>
+<section><h2>Three families</h2>
+<div class="grid"><div class="card"><h4><span class="ok">Task</span></h4>What you want: centering, progress. Large.</div><div class="card"><h4><span class="ko">Safety</span></h4>What must not happen: boundary, termination. Must be felt <b>before</b> the failure.</div><div class="card"><h4>Style</h4>How it should look: smoothness, rate. Small, or the car prefers not to act.</div></div>
+</section>
+<section><h2>Shape: the centering bell</h2>
+<div class='widget'><div class='ctl'><label>std (m) <input type="range" id="cs" min="0.05" max="0.6" step="0.01" value="0.25"><output id="cs-o"></output></label><label>weight <input type="range" id="cw" min="0.5" max="6" step="0.1" value="3.5"><output id="cw-o"></output></label></div><div id='cen'></div><div class='read' id='cen-t'></div></div><div class="key"><b>The slope teaches, not the height.</b> Where the curve is flat, moving changes nothing, so the car gets no signal.</div>
+</section>
+<section><h2>Case study: your boundary penalty</h2>
+<p><code>wheel_extent</code> = distance of the outermost wheel corner from the centre line. It is about 0.14 m when centred. The episode ends at <b>0.56 m</b>.</p><div class='widget'><div class='ctl'><label>margin (m) <input type="range" id="bm" min="0.25" max="0.55" step="0.01" value="0.5"><output id="bm-o"></output></label><label>weight <input type="range" id="bw" min="0.5" max="50" step="0.5" value="2"><output id="bw-o"></output></label><label>shape <select id='bs'><option value='2'>squared</option><option value='1'>linear</option></select></label></div><div id='bnd'></div><div class='read' id='bnd-t'></div></div><div class="key"><b>Try it.</b> Set margin 0.40, weight 20, squared: the warning becomes about 70× louder. Linear is louder still, from the first centimetre.</div><p class='small'>Your fresh run solved the task without this change, because the centering term already keeps the car far from the lines. Change it only if a harder track shows wheel touches.</p>
+</section>
+<section><h2>Scale check before training</h2>
+<div class="scroll"><table class="props"><tr><th>Question</th><th>Your numbers</th></tr><tr><td>Best reward per step</td><td>3.5 + 0.5 = 4 (× dt = 0.133)</td></tr><tr><td>Which term dominates?</td><td>centering: 87 % of the maximum</td></tr><tr><td>What does speed earn above 1.5 m/s?</td><td><span class="ko">nothing</span></td></tr><tr><td>Cost of failing</td><td>the lost future, up to ≈ 13.3</td></tr><tr><td>Can standing still pay?</td><td>centred and stopped: 4 − 1.5 = 2.5 per step, less than driving (≈ 4)</td></tr></table></div>
+</section>
+<section><h2>Loopholes</h2>
+<div class="scroll"><table class="props"><tr><th>You reward</th><th>Agent discovers</th></tr><tr><td>staying alive</td><td>drive as slowly as allowed</td></tr><tr><td>speed only</td><td>cut corners, crash fast</td></tr><tr><td>distance to centre only</td><td>stop on the centre line</td></tr><tr><td>huge action penalty</td><td>never steer</td></tr></table></div><div class="key"><b>Rule.</b> For each term ask: what is the laziest behaviour that scores high on this?</div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('08-rewards');
+bind(['cs','cw'],v=>{ const p=[]; for(let x=0;x<=0.6;x+=0.005) p.push([x,v.cw*Math.exp(-x*x/(2*v.cs*v.cs))]);
+ chart('cen',[{pts:p,col:C.acc}],{xmin:0,xmax:.6,ymin:0,xl:'lateral error of the car centre (m)',yl:'reward per step',vlines:[{x:v.cs,label:'std'},{x:.42,label:'≈ wheel touches',col:C.acc}]});
+ const f=x=>v.cw*Math.exp(-x*x/(2*v.cs*v.cs));
+ $('cen-t').textContent=`reward at 0 m: ${f(0).toFixed(2)}   0.20 m: ${f(0.2).toFixed(2)}   0.40 m: ${f(0.4).toFixed(2)}\nsteepest slope at ${v.cs.toFixed(2)} m`; });
+bind(['bm','bw','bs'],v=>{ const k=+v.bs, f=x=>v.bw*Math.pow(Math.max(x-v.bm,0),k), p=[]; for(let x=0.14;x<=0.5601;x+=0.002) p.push([x,-f(x)]);
+ chart('bnd',[{pts:p,col:C.acc}],{xmin:.14,xmax:.62,ymax:0,ymin:-Math.max(f(.56),0.001),xl:'wheel_extent (m)',yl:'penalty per step',vlines:[{x:v.bm,label:'margin'},{x:.56,label:'end',col:C.acc}]});
+ $('bnd-t').textContent=`largest penalty before the episode ends: ${f(.56).toFixed(4)} per step  (centering max: 3.5)\nwarning zone: ${((.56-v.bm)*100).toFixed(0)} cm`; });
+</script></body></html>

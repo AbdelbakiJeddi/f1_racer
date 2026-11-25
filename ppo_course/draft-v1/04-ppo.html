@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>4 · The PPO clip</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>4 · The PPO clip</h1><p class="sub">Make good actions more likely, but never trust one batch too much.</p><nav id="nav"></nav>
+<section><h2>Plain policy gradient</h2>
+<p>Raise the probability of actions with positive advantage, lower the others. Problem: one noisy batch can push the policy very far, and the next data then comes from a broken policy.</p><figure><div id="pg"></div><figcaption>Why a big step is dangerous: the policy collects its own training data.</figcaption></figure><div class="key"><b>The core risk.</b> In supervised learning a bad step is fixed by the next batch. In RL a bad step spoils the next batch.</div>
+</section>
+<section><h2>The ratio</h2>
+<div class='read'>ratio = π_new(a|s) / π_old(a|s)
+1.0  unchanged   1.2  now 20 % more likely   0.8  20 % less likely</div>
+</section>
+<section><h2>The clip</h2>
+<p>PPO rewards the change only while the ratio stays within <b>1 ± ε</b>. Past that, pushing further earns nothing.</p><div class='read'>objective = min( ratio·A ,  clip(ratio, 1−ε, 1+ε)·A )</div><div class='widget'><div class='ctl'><label>ε (clip_param) <input type="range" id="eps" min="0.05" max="0.5" step="0.01" value="0.2"><output id="eps-o"></output></label><label>advantage A <input type="range" id="adv" min="-2" max="2" step="0.1" value="1"><output id="adv-o"></output></label><label>current ratio <input type="range" id="r" min="0.4" max="1.8" step="0.01" value="1"><output id="r-o"></output></label></div><div id='clip'></div><div class='read' id='clip-t'></div></div><div class="key"><b>Read the flat part.</b> Flat = zero gradient = stop pushing. It is only flat on the side that would reward going further. If the policy moved the wrong way, the gradient stays and pulls it back.</div>
+</section>
+<section><h2>The full loss in rsl_rl</h2>
+<div class='read'>loss = surrogate  +  value_loss_coef · value_loss  −  entropy_coef · entropy
+                     1.0                          0.008</div><div class="scroll"><table class="props"><tr><th>Part</th><th>Trains</th><th>Pushes toward</th><th>Your tag</th></tr><tr><td>surrogate</td><td>actor</td><td>better actions, within the clip</td><td>Loss/surrogate</td></tr><tr><td>value loss</td><td>critic</td><td>accurate predictions (also clipped by ε)</td><td>Loss/value</td></tr><tr><td>entropy bonus</td><td>actor std</td><td>staying exploratory</td><td>Loss/entropy</td></tr></table></div><div class="key"><b>Remember.</b> <code>Loss/surrogate</code> is not an error that must reach 0. Small and noisy around 0 is healthy. Judge progress on reward and episode length.</div>
+</section>
+<section><h2>Second brake: KL divergence</h2>
+<p>The clip limits each sample. <b>KL</b> measures how far the whole policy moved. With <code>schedule: adaptive</code>, the learning rate follows it:</p><figure><div id="kl"></div><figcaption>desired_kl = 0.01. Bounds: 1e-5 … 1e-2.</figcaption></figure>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('04-ppo');
+bind(['eps','adv','r'],v=>{
+ const f=r=>Math.min(r*v.adv, Math.max(1-v.eps,Math.min(1+v.eps,r))*v.adv), a=[],b=[];
+ for(let r=0.4;r<=1.8;r+=0.005){ a.push([r,r*v.adv]); b.push([r,f(r)]); }
+ chart('clip',[{pts:a,col:C.mut,label:'unclipped ratio·A',dash:true},{pts:b,col:C.acc,label:'PPO objective'},{pts:[[v.r,f(v.r)]],col:C.blue,dots:true}],{xmin:.4,xmax:1.8,xl:'ratio',vlines:[{x:1-v.eps,label:'1−ε'},{x:1+v.eps,label:'1+ε'},{x:1,label:''}]});
+ const flat=(v.adv>0&&v.r>1+v.eps)||(v.adv<0&&v.r<1-v.eps);
+ $('clip-t').textContent=`objective = ${f(v.r).toFixed(3)}\n`+(v.adv===0?'A = 0: this action teaches nothing':flat?'clipped: no gradient, the update stops pushing this sample':`gradient active: make this action ${v.adv>0?'MORE':'LESS'} likely`);
+});
+svg('pg',720,120, box(10,35,130,50,['policy'])+L([[140,60],[196,60]],{arrow:true})+box(200,35,140,50,['collects data'])+L([[340,60],[396,60]],{arrow:true})+box(400,35,130,50,['update'])+L([[530,60],[586,60]],{arrow:true,col:C.acc})+box(590,35,120,50,['new policy'],{col:C.acc})+L([[650,85],[650,108],[75,108],[75,89]],{arrow:true,col:C.acc})+T(360,20,'a bad update poisons the next data',{col:C.acc}));
+svg('kl',720,140, box(10,45,160,50,['measure KL'])+L([[170,55],[300,25]],{arrow:true,col:C.acc})+L([[170,70],[300,70]],{arrow:true})+L([[170,85],[300,115]],{arrow:true,col:C.good})+
+ box(305,5,200,38,['KL > 0.02: too fast'],{col:C.acc})+box(305,51,200,38,['0.005 … 0.02: fine'])+box(305,97,200,38,['KL < 0.005: too slow'],{col:C.good})+
+ T(620,29,'learning rate ÷ 1.5',{col:C.acc,b:true})+T(620,75,'unchanged',{b:true})+T(620,121,'learning rate × 1.5',{col:C.good,b:true}));
+</script></body></html>

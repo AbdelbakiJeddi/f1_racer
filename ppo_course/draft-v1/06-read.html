@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>6 · Reading the data</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>6 · Reading the data</h1><p class="sub">Read in this order: did it survive, why did it end, what paid, how sure is it.</p><nav id="nav"></nav>
+<section><h2>Reading order</h2>
+<figure><div id="order"></div><figcaption>Never start with the loss curves.</figcaption></figure>
+</section>
+<section><h2>Your run, explorable</h2>
+<p>Run <code>wheel-limit_vision-memory_center-heading</code>. Pick a tag, hover the curve.</p><div class='widget'><div class='ctl'><label>tag <select id='tag'></select></label><label><input type='checkbox' id='lg'> log scale</label></div><div id='plot'></div><div class='read' id='note'></div></div>
+</section>
+<section><h2>Three phases of this run</h2>
+<div class="scroll"><table class="props"><tr><th>Iterations</th><th>What you see</th><th>Meaning</th></tr><tr><td>0 – 40</td><td>length 43 → 378, off_track high, σ rises, value loss up</td><td>discovering how to stay on the road</td></tr><tr><td>40 – 80</td><td>off_track → 0, length → 1200, reward jumps</td><td>the skill appears</td></tr><tr><td>80 – 238</td><td>reward flat ≈ 151, σ 0.18 → 0.019, value loss ≈ 1e-4</td><td>solved: only polishing, little left to learn</td></tr></table></div><div class="key"><b>Check the arithmetic.</b> (centering 3.49 + heading 0.50 − slow 0.009 − smooth 0.204 − rate 0.0002) × 40 s ≈ 151 = <code>mean_reward</code>. Maximum possible = 4 × 40 = 160.</div>
+</section>
+<section><h2>Success vs failure</h2>
+<p>The earlier run (resumed from an old policy, different reward set) shows the sick pattern. Only five sampled points of it were kept.</p><div class="scroll"><table class="props"><tr><th>Signal</th><th>Failed run (iter 200→246)</th><th>Your fresh run (iter 0→238)</th></tr><tr><td>episode length</td><td><span class="ko">118 → 89</span></td><td><span class="ok">43 → 1200</span></td></tr><tr><td>off_track</td><td><span class="ko">only ending seen</span></td><td><span class="ok">0 after discovery</span></td></tr><tr><td>learning rate</td><td>5e-4 → 3e-5 in 47 its</td><td>swings 2e-3 ↔ 3e-5, normal</td></tr><tr><td>σ</td><td>≈ 0.21, not moving</td><td>0.2 → 0.019</td></tr><tr><td>verdict</td><td>start fresh</td><td>stop training, test it</td></tr></table></div><p class='small'>Mean reward is not comparable between the two: the reward terms changed.</p>
+</section>
+<section><h2>Dictionary of tags</h2>
+<div class="scroll"><table class="props"><tr><th>Tag</th><th>What it is</th><th>Healthy</th><th>Sick</th></tr><tr><td>Train/mean_reward</td><td>total reward per episode</td><td>rises, then flattens</td><td>flat from start, or falls</td></tr><tr><td>Train/mean_episode_length</td><td>steps survived (max 1200)</td><td>climbs to the max</td><td>stuck low</td></tr><tr><td>Episode_Termination/*</td><td>share of cars whose last episode ended this way (0…1)</td><td>time_out → 1</td><td>off_track stays ≈ 1</td></tr><tr><td>Episode_Reward/*</td><td>episode sum of a weighted term ÷ 40 s</td><td>approaches its max</td><td>one term dwarfs or never moves</td></tr><tr><td>Policy/mean_std</td><td>exploration σ</td><td>slow decline after success</td><td>explodes, or ≈ 0 before success</td></tr><tr><td>Loss/value</td><td>critic error</td><td>spike during discovery, then low</td><td>keeps growing</td></tr><tr><td>Loss/surrogate</td><td>actor objective</td><td>small, noisy</td><td>large and steady drift</td></tr><tr><td>Loss/entropy</td><td>spread of the policy</td><td>slow decline</td><td>early collapse</td></tr><tr><td>Loss/learning_rate</td><td>set by the KL rule</td><td>moves up and down</td><td>pinned at 1e-5 or 1e-2</td></tr><tr><td>Perf/total_fps</td><td>samples per second</td><td>stable</td><td>drops: GPU or memory pressure</td></tr></table></div><div class="key"><b>Trap.</b> <code>Episode_Reward/*</code> is divided by the full 40 s, so short episodes make every term look tiny. Compare it only together with episode length.</div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/run.js"></script><script src="../assets/course.js"></script>
+<script>
+nav('06-read');
+const notes={'Train/mean_reward':'Flat after ~80 iterations: nothing more to earn with this reward.','Train/mean_episode_length':'1200 steps = 40 s = the time limit. Reached around iteration 63–80.',
+'Episode_Termination/time_out':'1.0: every car survives the full episode.','Episode_Termination/off_track':'The failure rate. Goes to 0.','Episode_Reward/centering':'Max 3.5. At 3.49 the car is practically on the centre line.',
+'Episode_Reward/heading':'Max 0.5: perfectly aligned.','Episode_Reward/slow_speed':'Large around iteration 40 (hesitating), then near 0: speed is above 1.5 m/s almost always.',
+'Episode_Reward/steering_smoothness':'The only penalty still visible: steering motion needed to follow the bends.','Episode_Reward/boundary':'0 because no wheel goes past 0.50 m.','Episode_Reward/steering_rate':'Tiny: actions barely jitter.',
+'Episode_Termination/lap_completed':'Always 0: lap detection lived inside the removed lap_completion reward.','Episode_Termination/rollover':'Never happens.',
+'Policy/mean_std':'Rises during discovery, then collapses. Below ~0.05 the policy hardly explores.','Loss/value':'Peaks while outcomes change, then the critic predicts almost perfectly. Use log scale.','Loss/learning_rate':'Moved by the KL rule. Use log scale.',
+'Loss/entropy':'Follows ln σ.','Loss/surrogate':'Noise around 0 is normal.'};
+const sel=$('tag'); sel.innerHTML=Object.keys(RUN).map(k=>`<option>${k}</option>`).join(''); sel.value='Train/mean_episode_length';
+bind(['tag','lg'],v=>{ const p=RUN[v.tag]; const log=v.lg&&p.every(q=>q[1]>0);
+ chart('plot',[{pts:p,col:C.acc}],{log,hover:true,xl:'iteration',vlines:[{x:40,label:'40'},{x:80,label:'80'}]});
+ $('note').textContent=(notes[v.tag]||'')+(v.lg&&!log?'\n(log scale needs all values > 0)':'');
+});
+svg('order',720,100, ['1 Survive?|episode_length','2 Why end?|Episode_Termination','3 What paid?|Episode_Reward','4 How sure?|mean_std, entropy','5 Healthy?|losses, lr'].map((t,i)=>box(6+i*144,24,124,56,t.split('|'),{col:i<2?C.acc:C.fg})+(i<4?L([[130+i*144,52],[148+i*144,52]],{arrow:true}):'')).join(''));
+</script></body></html>

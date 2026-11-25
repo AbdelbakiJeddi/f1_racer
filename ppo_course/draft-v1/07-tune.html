@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>7 · Tuning</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>7 · Tuning</h1><p class="sub">Fix in this order: bugs, observations, reward, termination, and only then PPO.</p><nav id="nav"></nav>
+<section><h2>The pyramid</h2>
+<figure><div id="pyr"></div><figcaption>Lower layers dominate. A PPO parameter cannot repair a wrong observation.</figcaption></figure><div class="key"><b>Real example from this project.</b> The detector confused the left and right line, and the near band fell back to 0 with no line. No learning rate fixes that. Correcting it came first.</div>
+</section>
+<section><h2>Decision tree</h2>
+<figure><div id="tree"></div><figcaption>Start at the top with the current run.</figcaption></figure>
+</section>
+<section><h2>Symptom → cause → knob</h2>
+<div class="scroll"><table class="props"><tr><th>Symptom</th><th>Likely cause</th><th>Try</th></tr><tr><td>length stuck low, one failure term at 1</td><td>task too strict at start, or resumed from a mismatched policy</td><td>fresh run; easier start; termination penalty</td></tr><tr><td>survives but reward flat and low</td><td>reward gradient too weak where the car lives</td><td>widen centering std; add the missing term</td></tr><tr><td>crawls or stops</td><td>positive reward for existing, nothing for speed</td><td>progress term; raise min_speed</td></tr><tr><td>zig-zag steering</td><td>action penalties too small, σ high</td><td>steering_rate up (−0.1 → −0.25)</td></tr><tr><td>reacts too late in bends</td><td>steering penalised or filtered too much, short horizon</td><td>steering penalties down; γ up</td></tr><tr><td>σ collapses before success</td><td>too little exploration</td><td>entropy_coef up (0.008 → 0.015)</td></tr><tr><td>σ grows without limit</td><td>entropy bonus beats the task reward</td><td>entropy_coef down</td></tr><tr><td>lr pinned at 1e-5</td><td>updates keep exceeding KL</td><td>lower start lr, fewer epochs; check reward spikes</td></tr><tr><td>value loss keeps growing</td><td>reward scale too large or critic lacks information</td><td>rescale rewards; richer critic observation</td></tr><tr><td>good in training, bad elsewhere</td><td>overfit to one track or start</td><td>randomise start, noise, tracks</td></tr></table></div>
+</section>
+<section><h2>Learning-rate rule, live</h2>
+<div class='widget'><div class='ctl'><label>measured KL <input type="range" id="kv" min="0" max="0.05" step="0.001" value="0.03"><output id="kv-o"></output></label><label>desired_kl <input type="range" id="tk" min="0.002" max="0.03" step="0.001" value="0.01"><output id="tk-o"></output></label></div><div class='read' id='lr'></div></div>
+</section>
+<section><h2>Run experiments like an engineer</h2>
+<div class="grid"><div class="card"><h4>One change</h4>Change one thing per run, or you learn nothing from the result.</div><div class="card"><h4>Name the run</h4><code>--run_name boundary-w20_m040</code></div><div class="card"><h4>Judge outside training</h4>Mean reward changes with the weights. Compare lap success and lateral error.</div><div class="card"><h4>Repeat</h4>Try a second seed before believing a small gain.</div></div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('07-tune');
+bind(['kv','tk'],v=>{ const t=v.kv>2*v.tk?'÷ 1.5  (too fast, slow down)':(v.kv>0&&v.kv<v.tk/2)?'× 1.5  (too timid, speed up)':'unchanged';
+ $('lr').textContent=`band: ${(v.tk/2).toFixed(4)} … ${(2*v.tk).toFixed(3)}\nlearning rate: ${t}`; });
+svg('pyr',720,200, [['PPO parameters',200],['termination and resets',340],['reward terms and weights',470],['observations and actions',590],['code is correct: sensor, detector, units, signs',710]].map(([n,w],i)=>R(360-w/2,6+i*38,w,34,{col:i===4?C.acc:C.fg,rx:4,fill:i===4?C.tint:'#fff'})+T(360,28+i*38,n,{b:i===4})).join(''));
+const q=(y,t)=>box(40,y,300,44,[t],{col:C.fg}), a=(y,t,c)=>box(440,y,270,44,t,{col:c});
+svg('tree',720,330, q(6,'Episodes end by failure?')+q(90,'Survives, but behaves badly?')+q(174,'Reward flat for 100 iterations?')+q(258,'Test on unseen tracks passes?')+
+ a(6,['Check obs, resets, penalty','before the failure'],C.acc)+a(90,['Fix the reward term that','pays for that behaviour'],C.acc)+a(174,['Solved or saturated:','stop and test'],C.blue)+a(258,['Done','if not: randomise, retrain'],C.good)+
+ [0,1,2,3].map(i=>L([[340,28+i*84],[436,28+i*84]],{arrow:true,col:C.acc})+T(388,22+i*84,'yes',{col:C.acc,size:11})+(i<3?L([[190,50+i*84],[190,86+i*84]],{arrow:true})+T(208,73+i*84,'no',{size:11}):'')).join('')+T(690,320,'',{}));
+</script></body></html>

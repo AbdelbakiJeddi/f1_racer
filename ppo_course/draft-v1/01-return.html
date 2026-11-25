@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1 · Reward and return</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>1 · Reward and return</h1><p class="sub">The car does not maximise the next reward. It maximises everything that comes after.</p><nav id="nav"></nav>
+<section><h2>Your reward, per step</h2>
+<p>Each term is computed, multiplied by its weight, summed, then multiplied by the step time <code>dt = 1/30</code>.</p><div class="scroll"><table class="props"><tr><th>Term</th><th>Weight</th><th>Formula</th><th>Range per step (before dt)</th></tr><tr><td>centering</td><td>+3.5</td><td>exp(−lat² / (2·0.25²))</td><td>0 … 3.5</td></tr><tr><td>heading</td><td>+0.5</td><td>cos(heading error)</td><td>−0.5 … 0.5</td></tr><tr><td>slow_speed</td><td>−1.0</td><td>max(1.5 − speed, 0)</td><td>−1.5 … 0</td></tr><tr><td>boundary</td><td>−2.0</td><td>max(wheel_extent − 0.50, 0)²</td><td>≈ −0.007 … 0</td></tr><tr><td>steering_smoothness</td><td>−0.15</td><td>Σ knuckle velocity²</td><td>≤ 0</td></tr><tr><td>steering_rate</td><td>−0.1</td><td>(change of steer action)²</td><td>≤ 0</td></tr></table></div>
+</section>
+<section><h2>Return and γ</h2>
+<p>The <b>return</b> is the sum of future rewards, each one step further counting a bit less:</p><div class='read'>G = r₀ + γ·r₁ + γ²·r₂ + γ³·r₃ + …</div><div class='widget'><div class='ctl'><label>γ <input type="range" id="g" min="0.8" max="0.999" step="0.001" value="0.99"><output id="g-o"></output></label><label>car falls at step <input type="range" id="fall" min="5" max="300" step="1" value="90"><output id="fall-o"></output></label></div><div id='ret'></div><div class='read' id='ret-t'></div></div><p class='small'>Orange: how much each future step counts (γᵗ). The green curve is what the car still collects before falling. Reward per good step = 4 × dt ≈ 0.133.</p><div class="key"><b>γ is how far the car looks.</b> Horizon ≈ 1/(1−γ) steps. γ = 0.99 → 100 steps → 3.3 s of driving.</div>
+</section>
+<section><h2>Why falling hurts, with no penalty at all</h2>
+<p>Your task has no explicit crash penalty. Ending the episode simply cuts the future: all remaining reward is lost.</p><figure><div id="die"></div><figcaption>Discounted value of staying alive vs the largest possible boundary warning, per step.</figcaption></figure><div class="key"><b>Remember.</b> A good driver is worth ≈ 13.3. The boundary penalty is at most 0.00024 per step: about 55 000 times smaller. The wall teaches, the warning is silent.</div>
+</section>
+<section><h2>When positive rewards go wrong</h2>
+<div class="grid2"><div class="card"><h4><span class="ok">Mostly positive</span></h4>Staying alive pays. The car avoids ending the episode. Risk: it may crawl or stall to farm reward.</div><div class="card"><h4><span class="ko">Mostly negative</span></h4>Every step costs. Ending early can be the best choice: the car learns to crash quickly.</div></div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('01-return');
+bind(['g','fall'],v=>{
+ const w=[],a=[]; for(let t=0;t<=300;t++){ w.push([t,Math.pow(v.g,t)]); a.push([t,t<v.fall?Math.pow(v.g,t):0]); }
+ chart('ret',[{pts:w,col:C.acc,label:'weight γᵗ'},{pts:a,col:C.good,label:'actually collected'}],{ymin:0,ymax:1,xl:'steps ahead'});
+ const r=4/30, full=r/(1-v.g), got=r*(1-Math.pow(v.g,v.fall))/(1-v.g);
+ $('ret-t').textContent=`horizon ${(1/(1-v.g)).toFixed(0)} steps = ${(1/(1-v.g)/30).toFixed(1)} s\nreturn if it never falls: ${full.toFixed(2)}\nreturn if it falls at step ${v.fall}: ${got.toFixed(2)}   lost: ${(full-got).toFixed(2)}`;
+});
+svg('die',720,110, T(10,32,'stay alive',{a:'start'})+R(130,18,520,20,{fill:C.good,col:C.good,rx:3})+T(660,33,'13.3',{a:'start',b:true})+
+ T(10,82,'boundary, 1 step',{a:'start'})+R(130,68,1.5,20,{fill:C.acc,col:C.acc,rx:0})+T(145,83,'0.00024',{a:'start',b:true,col:C.acc}));
+</script></body></html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2 · Value, Bellman and TD</title><link rel="stylesheet" href="assets/course.css"></head><body><main>
+<h1>2 · Value, Bellman and TD</h1><p class="sub">How good is it to be here? Learning to predict the return without waiting for it.</p><nav id="nav"></nav>
+<section><h2>Waiting for the end is too slow<span class="sl">the problem</span></h2>
+<div class="split"><div><p class="lead">The return G<sub>t</sub> is only known when the episode ends, up to 1200 steps later. It is also noisy: the same situation can end well or badly by chance.</p>
+<p>We want to answer, <i>right now</i>: "how good is it to be here?" That answer is the <b>value</b>.</p></div><div><div class='read'>same state, three runs of the same policy:
+  G = 24.1   (drives the full 40 s)
+  G = 18.7   (small wobble later)
+  G =  9.3   (touches the line after 1.6 s)
+value = the average over all such runs</div></div></div>
+</section>
+<section><h2>Value of a state, value of an action<span class="sl">definitions</span></h2>
+<div class="split"><div><div class='eq'>V<sup>π</sup>(s)   = E[ G<sub>t</sub> | s<sub>t</sub> = s ]               state value
+Q<sup>π</sup>(s,a) = E[ G<sub>t</sub> | s<sub>t</sub> = s, a<sub>t</sub> = a ]      action value</div><p><b>V</b>: the return you expect from state s if you keep following policy π.</p>
+<p><b>Q</b>: the same, but forcing action a first, then following π.</p>
+<p>Both depend on π: the same position is worth a lot to a good driver and little to a bad one. When the policy improves, the values change too. That is why the critic is retrained at every iteration.</p></div><div><figure><div id="vstates"></div><figcaption>Three states, three values (illustrative, with your current maximum of 25).</figcaption></figure><p>The gap between Q and V is the core of the policy gradient (page 5): <b>A(s,a) = Q(s,a) − V(s)</b>, how much better action a is than the policy's usual choice.</p></div></div>
+</section>
+<section><h2>The Bellman equation<span class="sl">derived from the return</span></h2>
+<div class="split"><div><p>Start from the recursive return of page 1:</p><div class='eq'>G<sub>t</sub> = r<sub>t</sub> + γ·G<sub>t+1</sub></div><p>Take the expectation of both sides, given s<sub>t</sub> = s:</p><div class='eq'>V(s) = E[ r<sub>t</sub> + γ·G<sub>t+1</sub> | s ]
+     = E[ r<sub>t</sub> + γ·V(s<sub>t+1</sub>) | s ]</div><p>The second line uses: the expected return from s<sub>t+1</sub> <i>is</i> V(s<sub>t+1</sub>). This is the <b>Bellman equation</b>:</p>
+<div class='key'><b>Bellman.</b> The value here = the reward now + γ × the value of where you land.</div>
+<p>It links each state's value to its neighbours'. It does not need the end of the episode: one step of experience is enough to check (and correct) a value estimate.</p></div><div><figure><div id="bell"></div><figcaption>A value is the average, over possible next states, of reward + γ·next value.</figcaption></figure><p>At a <b>terminal</b> state (off_track) there is no next state: V(s′) = 0. At a <b>time-out</b> the next state exists, so V(s′) stays. This is the γ·V(s) that rsl_rl adds on time-outs (page 0).</p></div></div>
+</section>
+<section><h2>Break it: watch values spread<span class="sl">interactive</span></h2>
+<div class="split"><div><p>A toy version of your track: 11 lateral cells, 8 cm apart. The outer cells are terminal (a wheel on the line). The policy is bad on purpose: each step it drifts one cell left (25 %), stays (50 %) or drifts right (25 %). Reward per step = the centering bell, 1 at the centre.</p>
+<p>Two ways to compute V:</p>
+<ul><li><b>Bellman sweep</b>: apply the equation to every cell at once, using the known drift probabilities.</li>
+<li><b>TD learning</b>: no probabilities given. Drive sampled episodes and correct V cell by cell from what happens (next section).</li></ul><div id="pr2"></div></div><div><div class='widget'><div class='ctl'><label>method <select id='mth'><option value='sweep'>Bellman sweep</option><option value='td'>TD learning from samples</option></select></label><label>γ <input type="range" id="gv" min="0.5" max="0.99" step="0.01" value="0.99"><output id="gv-o"></output></label><label>TD step size α <input type="range" id="al" min="0.01" max="0.6" step="0.01" value="0.1"><output id="al-o"></output></label></div><div id='v-tl'></div><div id='vb'></div><div class='read' id='vb-t'></div></div></div></div><p class='small'>Exact values for γ = 0.99 (verified): centre 29.83, next to the line 9.64. With γ = 0.9 the centre is only 8.28: the far future barely counts.</p><div class="key"><b>To remember.</b> Information travels one step per update: the line's danger reaches the centre only after many sweeps. In a real network, this is why the critic needs many iterations before its values are useful.</div>
+</section>
+<section><h2>Monte Carlo vs Temporal Difference<span class="sl">two ways to learn V</span></h2>
+<div class="split"><div><p>We do not know the drift probabilities of the real car. We only have experience. Two ways to use it:</p><div class="scroll"><table class="props"><tr><th></th><th>Monte Carlo (MC)</th><th>Temporal Difference (TD)</th></tr><tr><td>target for V(s)</td><td>the real return G<sub>t</sub></td><td>r<sub>t</sub> + γ·V(s<sub>t+1</sub>)</td></tr><tr><td>wait for</td><td>the end of the episode</td><td>one step</td></tr><tr><td>bias</td><td>none (real outcome)</td><td>yes: uses the current, imperfect V</td></tr><tr><td>noise (variance)</td><td>high: sums many random rewards</td><td>low: one random reward</td></tr><tr><td>update</td><td>V ← V + α(G − V)</td><td>V ← V + α·δ</td></tr></table></div><div class='eq'>δ<sub>t</sub> = r<sub>t</sub> + γ·V(s<sub>t+1</sub>) − V(s<sub>t</sub>)        the TD error</div><p><b>δ is the surprise</b> of one step: positive if the step went better than V predicted.</p></div><div><p>Using a guess (V) to build the target for another guess is called <b>bootstrapping</b>. It is what lets TD learn while driving, before the episode ends.</p>
+<p>The α slider above shows the trade-off on step size: α = 0.02 converges slowly but accurately (centre 29.2 after 3000 episodes), α = 0.5 jumps around the truth (36.6 at the same point).</p><div class="why"><b>Why not just pick one?</b> MC is unbiased but noisy; TD is steady but biased while V is still wrong. GAE (page 6) blends them with one parameter, λ = 0.95 in your config. δ defined here is the building block of GAE.</div></div></div>
+</section>
+<section><h2>The critic in your project<span class="sl">V as a neural network</span></h2>
+<div class="split"><div><p>With continuous positions, speeds and angles, V cannot be a table. It is a network <b>V<sub>φ</sub>(s)</b> with parameters φ:</p><div class='read'>critic: 8 inputs → 128 → 64 → 32 → 1 output   (ELU activations, 11 521 weights)</div><p>It is trained like a regression: after each data collection, compute a target return for every sample, then minimise</p><div class='eq'>value loss = ( V<sub>φ</sub>(s) − target )²</div><p>That is <code>Loss/value</code> in TensorBoard. A value loss that keeps growing means the critic cannot keep up with the changing policy, or the rewards are badly scaled.</p></div><div><div class="why"><b>Why value_loss_coef = 1.0?</b> The total loss adds the actor and critic terms (page 8). The coefficient balances them. With separate networks for actor and critic, as in your config, the gradients do not mix much, so 1.0 is a safe default.</div><div class="why"><b>Why the critic gets privileged inputs?</b> Better inputs give better values, and better values give less noisy learning signals for the actor. The exact lateral error is far more informative than the camera estimate, and it costs nothing because the critic never runs on the real car.</div><div class="anchor"><b>In the project</b><ul style="margin:6px 0 0;padding-left:20px"><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/mdp/observations.py:54</code>: privileged_track_state: the critic's input</li><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/config/f1_car/agents/rsl_rl_ppo_cfg.py</code>: critic hidden_dims [128, 64, 32]</li><li><code>rsl_rl/algorithms/ppo.py:154</code>: time-outs: reward += γ·V(s), the bootstrap of a truncated episode</li></ul></div></div></div><details><summary>Deep dive: why PPO learns V and not Q</summary><p>Q(s,a) needs the action as an input and, to pick the best action, a maximisation over all actions. With continuous actions (steer, throttle) that maximisation is itself an optimisation problem. Methods like DDPG and SAC do learn Q, with an extra actor trained to maximise it.</p>
+<p>PPO avoids this: it learns V(s) only, and estimates the advantage A = Q − V from real rewards plus V (page 6). The actor's job is then simply: make actions with positive advantage more likely.</p>
+<p>The Bellman <i>optimality</i> equation, V*(s) = max<sub>a</sub> E[r + γV*(s′)], defines the value of the best policy. Q-learning methods iterate it. PPO instead evaluates its current policy (Bellman <i>expectation</i> equation) and improves the policy by gradient steps.</p></details>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="assets/course.js"></script>
+<script>
+nav('02-value');
+svg('vstates',640,150, box(10,20,190,80,['centred, aligned','V ≈ 24'],{col:C.good})+box(225,20,190,80,['drifting outward','V ≈ 12'],{col:C.mut})+box(440,20,190,80,['wheel 2 cm from line','V ≈ 2'],{col:C.acc})+T(320,130,'same policy π, three states',{col:C.mut,size:11}));
+svg('bell',640,220, box(20,85,110,50,['s','V(s) = ?'])+L([[130,110],[300,40]],{arrow:true})+L([[130,110],[300,110]],{arrow:true})+L([[130,110],[300,180]],{arrow:true})+
+ box(305,15,130,50,["s′₁","V(s′₁)"])+box(305,85,130,50,["s′₂","V(s′₂)"])+box(305,155,130,50,["s′₃ terminal","V = 0"],{col:C.acc})+
+ T(540,44,'r₁ + γ·V(s′₁)',{col:C.good})+T(540,114,'r₂ + γ·V(s′₂)',{col:C.good})+T(540,184,'r₃ + 0',{col:C.acc})+T(220,210,'V(s) = probability-weighted average of the three',{size:11,col:C.mut}));
+predict('pr2','start from V = 0 everywhere and apply one Bellman sweep. What is V at the centre cell?',['0','1.0','about 30'],1,
+ 'After one sweep every cell only knows its own reward: V(centre) = r = 1 + 0.99 × 0. It takes about 20 sweeps to reach 14.9 and 400 to reach the true 29.83: the future has to travel in, one step per sweep.');
+const N=11, xs=[...Array(N)].map((_,i)=>(i-5)*0.08), r=xs.map(x=>Math.exp(-x*x/(2*.0625))), labels=xs.map(x=>(x*100).toFixed(0));
+let hist=[], mode='sweep';
+function build(v){
+  hist=[]; let V=Array(N).fill(0); hist.push({V:V.slice(),note:'start: V = 0 everywhere'});
+  if(v.mth==='sweep'){ for(let s=1;s<=400;s++){ V=V.map((_,i)=>(i==0||i==N-1)?0:r[i]+v.gv*(.25*V[i-1]+.5*V[i]+.25*V[i+1])); if(s<=30||s%10==0) hist.push({V:V.slice(),note:`after sweep ${s}`}); } }
+  else { let ep=0; for(let k=0;k<=150;k++){ for(let e=0;e<20;e++){ ep++; let s=5; while(s>0&&s<N-1){ const u=Math.random(), s2=u<.25?s-1:u<.75?s:s+1; const tgt=r[s]+v.gv*((s2==0||s2==N-1)?0:V[s2]); V[s]+=v.al*(tgt-V[s]); s=s2; } } hist.push({V:V.slice(),note:`after ${ep} sampled episodes`}); } }
+  let E=Array(N).fill(0); for(let it=0;it<20000;it++) E=E.map((_,i)=>(i==0||i==N-1)?0:r[i]+v.gv*(.25*E[i-1]+.5*E[i]+.25*E[i+1]));
+  hist.exact=E;
+}
+const vt=timeline('v-tl',()=>hist.length,k=>{ const h=hist[k];
+  bars('vb',h.V,{labels,max:Math.max(...hist.exact)*1.1,cols:h.V.map((_,i)=>(i==0||i==N-1)?C.acc:C.blue),xl:'lateral position of the car centre (cm)'});
+  $('vb-t').textContent=`centre: ${h.V[5].toFixed(2)}  (exact ${hist.exact[5].toFixed(2)})     next to the line: ${h.V[1].toFixed(2)}  (exact ${hist.exact[1].toFixed(2)})`;
+  return h.note; },{ms:90});
+bind(['mth','gv','al'],v=>{ build(v); vt.reset(); });
+</script></body></html>

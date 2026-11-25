@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2 · The policy</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>2 · The policy</h1><p class="sub">The actor does not output an action. It outputs a probability of actions.</p><nav id="nav"></nav>
+<section><h2>A bell curve per action</h2>
+<p>The network gives a <b>mean</b> μ for steer and throttle. A separate learned number gives the <b>std</b> σ. During training the action is drawn at random around μ. In play mode, μ is used directly.</p><figure><div id="flow"></div><figcaption>Mean from the network, std from one learned parameter per action.</figcaption></figure><div class='widget'><div class='ctl'><label>mean μ <input type="range" id="mu" min="-1" max="1" step="0.01" value="0.2"><output id="mu-o"></output></label><label>std σ <input type="range" id="sd" min="0.02" max="0.6" step="0.01" value="0.2"><output id="sd-o"></output></label><button id='go'>sample 40 actions</button></div><div id='bell'></div><div class='read' id='bell-t'></div></div><div class="key"><b>σ is exploration.</b> Large: tries many things, drives noisily. Small: repeats what it knows, learns nothing new.</div>
+</section>
+<section><h2>Two numbers PPO needs from this curve</h2>
+<div class="scroll"><table class="props"><tr><th>Number</th><th>Question it answers</th><th>Used for</th></tr><tr><td>log-probability</td><td>How likely was the action I took?</td><td>comparing old and new policy (page 4)</td></tr><tr><td>entropy</td><td>How spread out is the policy?</td><td>a small bonus that resists collapsing to σ → 0</td></tr></table></div><div class='read'>entropy (2 actions) = Σ ½·ln(2πe) + ln σ
+σ = 0.2    →  −0.38   (your first iteration: −0.37)
+σ = 0.019  →  −5.10   (your iteration 238: −5.44)</div><div class="key"><b>Check.</b> <code>Loss/entropy</code> and <code>Policy/mean_std</code> tell the same story. Negative entropy is normal for continuous actions.</div>
+</section>
+<section><h2>Your run: σ over training</h2>
+<figure><div id="std"></div><figcaption>Policy/mean_std: starts at init_std 0.2, rises while searching, then collapses once the task is solved.</figcaption></figure>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/run.js"></script><script src="../assets/course.js"></script>
+<script>
+nav('02-policy');
+const draw=bind(['mu','sd'],v=>sample(v,false));
+function sample(v,dots){
+ const pdf=x=>Math.exp(-0.5*((x-v.mu)/v.sd)**2)/(v.sd*Math.sqrt(2*Math.PI)); const pts=[]; for(let x=-1.5;x<=1.5;x+=0.005) pts.push([x,pdf(x)]);
+ const se=[{pts,col:C.acc}];
+ chart('bell',se,{xmin:-1.5,xmax:1.5,ymin:0,ymax:Math.max(pdf(v.mu)*1.1,2),xl:'steer action'});
+ let out=0,s='';
+ if(dots) for(let i=0;i<40;i++){ const a=v.mu+v.sd*Math.sqrt(-2*Math.log(1-Math.random()))*Math.cos(2*Math.PI*Math.random()); if(Math.abs(a)>1) out++; const X=58+(a+1.5)/3*(720-72); s+=`<circle cx="${X.toFixed(1)}" cy="${205-(i%5)*5}" r="3" fill="${C.blue}" opacity=".7"/>`; }
+ $('bell').querySelector('svg').insertAdjacentHTML('beforeend',s);
+ const H=0.5*Math.log(2*Math.PI*Math.E)+Math.log(v.sd);
+ $('bell-t').textContent=`68 % of actions in [${(v.mu-v.sd).toFixed(2)}, ${(v.mu+v.sd).toFixed(2)}]   entropy of this one action: ${H.toFixed(2)}`+(dots?`\n${out} of 40 samples outside the −1…1 range`:'');
+}
+$('go').onclick=()=>sample({mu:+$('mu').value,sd:+$('sd').value},true);
+svg('flow',720,140, box(20,45,120,50,['observation','7 numbers'])+L([[140,70],[196,70]],{arrow:true})+box(200,45,130,50,['actor MLP'],{col:C.acc})+L([[330,70],[386,70]],{arrow:true})+box(390,10,120,46,['mean μ','2 numbers'])+box(390,86,120,46,['std σ','2 parameters'],{col:C.mut})+
+ L([[510,33],[566,62]],{arrow:true})+L([[510,109],[566,80]],{arrow:true})+box(570,45,130,50,['sample','a ~ N(μ, σ)'],{col:C.blue}));
+chart('std',[{pts:RUN['Policy/mean_std'],col:C.acc}],{ymin:0,xl:'iteration',yl:'mean std',hover:true,vlines:[{x:73,label:'solved',col:C.good}]});
+</script></body></html>

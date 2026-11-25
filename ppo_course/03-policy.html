@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3 · The stochastic policy</title><link rel="stylesheet" href="assets/course.css"></head><body><main>
+<h1>3 · The stochastic policy</h1><p class="sub">What the actor really outputs: a bell curve over actions, and what happens between that curve and the wheels.</p><nav id="nav"></nav>
+<section><h2>Why not just output a steering angle?<span class="sl">the problem</span></h2>
+<div class="split"><div><p class="lead">The simplest policy is a function: observation in, action out. Same input, always the same action. It is called <b>deterministic</b>.</p>
+<p>For learning, it has two flaws:</p>
+<ul><li><b>No exploration.</b> It only ever tries what it already does, so it can never discover that steering a bit earlier pays more.</li>
+<li><b>No gradient through the world.</b> To improve, we must know how the return changes when the action changes. The simulator (physics, camera, detector) cannot be differentiated. A probability over actions can (page 4).</li></ul></div><div><figure><div id="detsto"></div><figcaption>Deterministic: one action. Stochastic: a probability over actions, sampled at each step.</figcaption></figure></div></div>
+</section>
+<section><h2>The Gaussian policy<span class="sl">what the actor really outputs</span></h2>
+<div class="split"><div><p>Your actor is a <b>stochastic policy</b> π<sub>θ</sub>(a|s): for each observation, a bell curve (Gaussian, or normal distribution) over each action.</p><div class='eq'>a ∼ N( μ<sub>θ</sub>(s), σ² )
+
+μ<sub>θ</sub>(s) : the mean, computed by the network from the observation
+σ      : the standard deviation, one learned number per action</div><p><b>θ</b> is the set of all actor weights (43 330 here). Training changes θ, which moves μ for every observation at once.</p>
+<p>In your config σ is <b>state-independent</b>: the same spread whatever the car sees. It is a separate parameter, not a network output.</p>
+<p>In play mode the mean is used directly: no sampling, no noise.</p></div><div><figure><div id="flow"></div><figcaption>Mean from the network, std from one learned parameter per action, then one random draw.</figcaption></figure><div class="why"><b>Why a Gaussian?</b> Continuous actions need a continuous distribution. The Gaussian has a closed-form log-probability and entropy (both needed by PPO), one knob for 'where' (μ) and one for 'how wide' (σ), and is cheap to sample on the GPU for 64 cars at once.</div><div class="anchor"><b>In the project</b><ul style="margin:6px 0 0;padding-left:20px"><li><code>rsl_rl/modules/distribution.py:166</code>: std_param = init_std × ones(output_dim): σ is a plain learned parameter</li><li><code>rsl_rl/modules/distribution.py:191</code>: Normal(mean, std): the distribution sampled each step</li><li><code>rsl_rl/modules/distribution.py:197</code>: deterministic_output = the mean (play mode)</li></ul></div></div></div>
+</section>
+<section><h2>Log-probability: the quantity PPO pushes on<span class="sl">formula, then meaning</span></h2>
+<div class="split"><div><p>The density of one action value a under N(μ, σ²):</p><div class='eq'>π(a|s) = 1/(σ√(2π)) · exp( −(a − μ)² / (2σ²) )</div><p>Its logarithm, summed over the two actions (steer and throttle are independent):</p><div class='eq'>log π(a|s) = Σ<sub>i</sub> [ −(a<sub>i</sub> − μ<sub>i</sub>)² / (2σ<sub>i</sub>²) − log σ<sub>i</sub> − ½·log 2π ]</div><p>Why the log: products of probabilities over many steps become sums, numbers stay in a safe range, and the gradient is simple:</p><div class='eq'>∂ log π / ∂μ = (a − μ) / σ²</div></div><div><p>Read that last line: if the sampled action a was above the mean, increasing log π means <b>moving μ toward a</b>. The step is larger when σ is small.</p>
+<p>That is the whole mechanism of policy learning: after an action turned out well, move the mean toward it; after it turned out badly, move away. Page 4 derives it.</p></div></div>
+</section>
+<section><h2>Break it: sampling and the ±1 wall<span class="sl">interactive</span></h2>
+<div class="split"><div><div id="pr3"></div><p>Actions are clamped to −1…1 by the environment <i>after</i> sampling. Push the mean near the edge and watch the samples pile up on the wall.</p>
+<h3>Why the limit exists</h3>
+<p>−1…1 maps to physical limits: steer ±0.45 rad (the knuckle's range), throttle 0…3 m/s. The network has no idea of these limits, so the environment enforces them.</p>
+<h3>The hidden cost</h3>
+<p>rsl_rl computes log π on the <b>raw</b> sample (e.g. 1.3), while the car executed 1.0. All samples beyond the wall have the same effect on the car but different probabilities. The mean can drift past ±1 with no visible change, and the gradient toward it comes from noise. A policy whose mean sits beyond the wall has effectively saturated.</p></div><div><div class='widget'><div class='ctl'><label>mean μ <input type="range" id="mu" min="-1.5" max="1.5" step="0.01" value="0.9"><output id="mu-o"></output></label><label>std σ <input type="range" id="sd" min="0.02" max="1" step="0.01" value="0.2"><output id="sd-o"></output></label><button id='go'>sample 400 actions</button></div><div id='bell'></div><div class='read' id='bell-t'></div></div><p class='small'>Verified: μ = 0.9, σ = 0.2 → 30.9 % clipped. μ = 1.2 → 84.1 %. σ = 1 (rsl_rl's default init_std) at μ = 0 → 31.7 %.</p></div></div><div class="why"><b>Why clip_actions is null in your agent config?</b> Isaac Lab's wrapper can clip actions before they reach the environment; with <code>clip_actions: null</code> it does not, and the clamp happens in your action term. Either way the policy samples unbounded values. The common alternative is a tanh 'squashing' of the sample, with a log-probability correction, as in SAC.</div><div class="anchor"><b>In the project</b><ul style="margin:6px 0 0;padding-left:20px"><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/mdp/actions.py:92</code>: torch.clamp(actions, −1, 1)</li><li><code>isaaclab_rl/rsl_rl/vecenv_wrapper.py:157</code>: optional clip, disabled (clip_actions = None)</li></ul></div>
+</section>
+<section><h2>The action is not what the car does<span class="sl">actuator dynamics</span></h2>
+<div class="split"><div><p>Between the policy's action and the wheels, your action term adds two filters to the steering:</p><div class='eq'>target   = a<sub>steer</sub> × 0.45 rad
+filtered = 0.7·current + 0.3·target          (low-pass, α = 0.3)
+current += clamp(filtered − current, ±0.1)    (slew limit 3 rad/s × 1/30 s)</div><p>So a full-lock command needs several steps to take effect. Predict, then step through.</p><div id="pr4"></div></div><div><div class='widget'><div class='ctl'><label>command <select id='cmd'><option value='lock'>0 → full right (0.45 rad)</option><option value='rev'>full left → full right</option></select></label></div><div id='st-tl'></div><div id='st'></div></div></div></div><div class="why"><b>Why filter the steering at all?</b> A real servo cannot jump; a policy sampled with noise σ would otherwise make the wheels shake at 30 Hz. The filters give smooth, realistic steering. The cost is <b>lag</b>: a full reversal needs 12 steps (0.4 s) to reach 90 %. The policy must anticipate, and the return must look at least that far ahead (γ = 0.99 does).</div><div class="why"><b>Why steer is in the observation?</b> The filter has memory (the current angle). Without seeing it, the policy could not know whether its last command has arrived yet: the observation would not be Markov (page 0).</div><div class="anchor"><b>In the project</b><ul style="margin:6px 0 0;padding-left:20px"><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/mdp/actions.py:100</code>: EMA low-pass, steer_filter_alpha = 0.30</li><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/mdp/actions.py:103</code>: slew limit max_steer_rate = 3.0 rad/s</li><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/mdp/actions.py:111</code>: throttle rate limit 3.0 per second</li><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/mdp/observations.py:126</code>: steer angle read back into the observation</li></ul></div>
+</section>
+<section><h2>Entropy: measuring how random the policy is<span class="sl">exploration</span></h2>
+<div class="split"><div><p><b>Entropy</b> H measures the spread of a distribution. For a Gaussian it depends only on σ:</p><div class='eq'>H = ½·log(2πe) + log σ        per action</div><div class="scroll"><table class="props"><tr><th>σ</th><th>H per action</th><th>H for 2 actions (logged)</th></tr><tr><td>1.0</td><td>1.42</td><td>2.84</td></tr><tr><td>0.2 (your init)</td><td>−0.19</td><td>−0.38</td></tr><tr><td>0.05</td><td>−1.58</td><td>−3.15</td></tr><tr><td>0.019 (your run, end)</td><td>−2.54</td><td>−5.09</td></tr></table></div><p>Negative values are normal: for continuous distributions, entropy is relative. Only its change matters.</p></div><div><p>PPO adds a small <b>entropy bonus</b> to the loss (entropy_coef = 0.008). It rewards keeping σ larger, which fights premature collapse: a policy that stops exploring before it has found the good behaviour stays stuck.</p>
+<p>In TensorBoard, <code>Loss/entropy</code> and <code>Policy/mean_std</code> tell the same story through H = const + log σ.</p><div class="why"><b>Why init_std = 0.2 and not 1.0?</b> rsl_rl's default is 1.0. In your units, σ = 1 means steering noise of ±0.45 rad (full lock either way) and a third of all actions hitting the wall: the car would leave the track before learning anything. σ = 0.2 means ±0.09 rad of steering noise and ±0.3 m/s of speed noise: enough to explore, small enough to survive.</div><div class="why"><b>Why there is no lower or upper limit on σ?</b> rsl_rl's default std_range is (1e-6, 1e6): effectively unbounded. Nothing but the entropy bonus stops σ from collapsing. In your run it fell from 0.2 to 0.019 once the task was solved, which is fine then, but harmful if it happens before success.</div><div class="anchor"><b>In the project</b><ul style="margin:6px 0 0;padding-left:20px"><li><code>rsl_rl/modules/distribution.py:148</code>: std_range = (1e-6, 1e6)</li><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/config/f1_car/agents/rsl_rl_ppo_cfg.py:22</code>: init_std = 0.2</li><li><code>f1_racer_rl/src/f1_racer_rl/tasks/f1_racer/config/f1_car/agents/rsl_rl_ppo_cfg.py:33</code>: entropy_coef = 0.008</li></ul></div></div></div><details><summary>Deep dive: other ways to parameterise the policy</summary><ul><li><b>State-dependent σ</b>: the network also outputs σ(s), so the policy can be confident on straights and exploratory in bends. More expressive, less stable.</li>
+<li><b>log σ instead of σ</b> (<code>std_type: "log"</code>): the parameter is log σ, so σ can never become negative and changes are relative. rsl_rl supports both.</li>
+<li><b>Squashed Gaussian</b>: a = tanh(u), u ∼ N(μ, σ²). Actions stay inside ±1 by construction; log π gets a correction term −Σ log(1 − tanh²u).</li>
+<li><b>Beta distribution</b>: naturally bounded on [0, 1], used in some driving work.</li></ul></details>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="assets/course.js"></script>
+<script>
+nav('03-policy');
+svg('detsto',640,190, box(10,20,140,50,['observation']) + L([[150,45],[196,45]],{arrow:true}) + box(200,20,140,50,['deterministic']) + L([[340,45],[386,45]],{arrow:true}) + box(390,20,240,50,['always steer = 0.31'],{col:C.mut})+
+ box(10,110,140,50,['observation']) + L([[150,135],[196,135]],{arrow:true}) + box(200,110,140,50,['stochastic'],{col:C.acc}) + L([[340,135],[386,135]],{arrow:true}) + box(390,110,240,50,['0.27, 0.35, 0.30, 0.22, …','new draw every step'],{col:C.acc}));
+svg('flow',640,150, box(10,50,110,50,['observation','7 numbers'])+L([[120,75],[156,75]],{arrow:true})+box(160,50,120,50,['actor MLP','256-128-64'],{col:C.acc})+L([[280,75],[316,75]],{arrow:true})+box(320,10,120,50,['mean μ','2 numbers'])+box(320,90,120,50,['std σ','2 parameters'],{col:C.mut})+
+ L([[440,35],[496,65]],{arrow:true})+L([[440,115],[496,85]],{arrow:true})+box(500,50,130,50,['sample a','~ N(μ, σ²)'],{col:C.blue}));
+predict('pr3','mean 0.9, std 0.2. What share of the sampled actions hits the +1 wall?',['about 3 %','about 30 %','about 70 %'],1,'30.9 %: the wall is only half a standard deviation above the mean, and everything beyond it is executed as exactly 1.0.');
+function erf(x){const t=1/(1+0.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x>=0?y:-y;}
+const Phi=x=>0.5*(1+erf(x/Math.SQRT2));
+function drawBell(v,samples){
+ const pdf=x=>Math.exp(-0.5*((x-v.mu)/v.sd)**2)/(v.sd*Math.sqrt(2*Math.PI)); const p=[]; for(let x=-2;x<=2;x+=0.005) p.push([x,pdf(x)]);
+ const ymax=Math.max(pdf(v.mu),1)*1.15;
+ chart('bell',[{pts:p,col:C.acc,label:'density of the raw sample'}],{xmin:-2,xmax:2,ymin:0,ymax,xl:'steer action',vlines:[{x:-1,label:'−1 wall',col:C.acc},{x:1,label:'+1 wall',col:C.acc}]});
+ const clipped=100*(1-Phi((1-v.mu)/v.sd)+Phi((-1-v.mu)/v.sd));
+ let txt=`clipped (theory): ${clipped.toFixed(1)} %     steer noise: ±${(v.sd*0.45).toFixed(3)} rad`;
+ if(samples){ const W=720,m=58, X=a=>m+(a+2)/4*(W-m-14); let s='', hit=0; const bins={};
+   samples.forEach(a=>{ const c=Math.max(-1,Math.min(1,a)); if(c!==a) hit++; const b=Math.round(c*40); bins[b]=(bins[b]||0)+1; });
+   Object.entries(bins).forEach(([b,n])=>{ const x=X(b/40); s+=`<rect x="${x-3}" y="${216-Math.min(n,160)}" width="6" height="${Math.min(n,160)}" fill="${Math.abs(b)==40?C.acc:C.blue}" opacity=".55"/>`; });
+   $('bell').querySelector('svg').insertAdjacentHTML('beforeend',s); txt+=`\nsampled: ${hit} of ${samples.length} clipped (${(100*hit/samples.length).toFixed(1)} %). Blue bars: what the car executes. Orange bar at the wall: every clipped sample.`; }
+ $('bell-t').textContent=txt;
+}
+bind(['mu','sd'],v=>drawBell(v));
+$('go').onclick=()=>{ const v={mu:+$('mu').value,sd:+$('sd').value}; drawBell(v,[...Array(400)].map(()=>v.mu+v.sd*randn())); };
+predict('pr4','from straight to full right lock, how many decisions until the wheels reach 90 % of 0.45 rad?',['1 (instant)','about 3','about 7'],2,
+ '7 steps (0.23 s): the first steps are capped at 0.1 rad each by the slew limit, then the low-pass filter slows the end. A full left-to-right reversal takes 12 steps (0.4 s) to reach 90 %.');
+let trace=[];
+function steer(from){ let cur=from; const p=[[0,cur]]; for(let k=1;k<=24;k++){ const f=0.7*cur+0.3*0.45; cur+=Math.max(-0.1,Math.min(0.1,f-cur)); p.push([k,cur]); } return p; }
+const stl=timeline('st-tl',()=>25,k=>{ const cmd=trace.map(([t])=>[t,0.45]);
+ chart('st',[{pts:cmd,col:C.mut,dash:true,label:'command'},{pts:trace.slice(0,k+1),col:C.acc,dots:true,label:'actual steering angle'}],{xmin:0,xmax:24,ymin:-0.5,ymax:0.5,xl:'decision steps (1/30 s)',yl:'rad',vlines:[{x:7,label:'7'},{x:12,label:'12'}]});
+ const c=trace[k][1]; return `angle ${c.toFixed(3)} rad = ${(100*(c-trace[0][1])/(0.45-trace[0][1])).toFixed(0)} % of the way`; },{ms:120});
+bind(['cmd'],v=>{ trace=steer(v.cmd==='lock'?0:-0.45); stl.reset(); });
+</script></body></html>

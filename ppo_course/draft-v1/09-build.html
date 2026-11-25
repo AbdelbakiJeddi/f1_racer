@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>9 · Build from scratch</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>9 · Build from scratch</h1><p class="sub">Seven decisions, in order. Your F1 racer is the worked example.</p><nav id="nav"></nav>
+<section><h2>The design pipeline</h2>
+<figure><div id="pipe"></div><figcaption>Each box is a file or a config class in your task.</figcaption></figure>
+</section>
+<section><h2>Decisions</h2>
+<div class="scroll"><table class="props"><tr><th>#</th><th>Decide</th><th>Test it before moving on</th><th>F1 racer</th></tr><tr><td>1</td><td>Goal in one sentence</td><td>can you measure it?</td><td>drive laps, no wheel on a line</td></tr><tr><td>2</td><td>Action</td><td>drive it by script or teleop</td><td>steer, throttle</td></tr><tr><td>3</td><td>Observation</td><td>could a human do the task from it?</td><td>7 numbers from camera + speeds</td></tr><tr><td>4</td><td>Termination</td><td>trigger each one on purpose</td><td>wheel at 0.56 m, rollover, 40 s</td></tr><tr><td>5</td><td>Reward</td><td>log every term, check scales</td><td>centering, heading, 4 penalties</td></tr><tr><td>6</td><td>Reset and randomisation</td><td>look at many resets</td><td>fixed start (see below)</td></tr><tr><td>7</td><td>PPO config</td><td>short run, read page 6</td><td>64 × 64, γ 0.99, λ 0.95</td></tr></table></div>
+</section>
+<section><h2>Where it lives</h2>
+<div class="scroll"><table class="props"><tr><th>Piece</th><th>File under <code>tasks/f1_racer/</code></th></tr><tr><td>action</td><td>mdp/actions.py</td></tr><tr><td>observation</td><td>mdp/observations.py</td></tr><tr><td>reward</td><td>mdp/rewards.py + RewardsCfg</td></tr><tr><td>termination</td><td>mdp/terminations.py + TerminationsCfg</td></tr><tr><td>reset</td><td>mdp/events.py + EventCfg</td></tr><tr><td>PPO</td><td>config/f1_car/agents/rsl_rl_ppo_cfg.py</td></tr></table></div><p>A reward term is a small function that returns one number per car, plus one config line:</p><pre>heading = RewTerm(
+    func=mdp.CarRewards.heading_alignment,
+    weight=0.5,
+)</pre>
+</section>
+<section><h2>Control loop commands</h2>
+<p>From <code>f1_racer_rl/</code>:</p><pre>.venv/bin/isaaclab train --rl_library rsl_rl --task F1RacerRl-F1-Racer-F1-Car \
+  --num_envs 64 --max_iterations 600 --run_name my-change --visualizer none
+.venv/bin/tensorboard --logdir logs/rsl_rl
+.venv/bin/isaaclab play --rl_library rsl_rl --task F1RacerRl-F1-Racer-F1-Car \
+  --checkpoint latest --viz kit</pre>
+</section>
+<section><h2>Your next experiments</h2>
+<p>The run reached 151 of 160. The next gains are not in PPO.</p><div class="scroll"><table class="props"><tr><th>Order</th><th>Experiment</th><th>Why</th></tr><tr><td>1</td><td>test the policy on unseen tracks (<code>scripts/test_single_lap.py</code>)</td><td>training reward says nothing about new tracks</td></tr><tr><td>2</td><td>randomise start point, lateral offset and yaw in <code>reset_pose</code></td><td>now <code>random_start_point=False</code> and both ranges are 0: every episode starts the same</td></tr><tr><td>3</td><td>pay for speed (small progress term)</td><td>nothing rewards going faster than 1.5 m/s</td></tr><tr><td>4</td><td>restore lap detection outside the reward</td><td><code>lap_completed</code> can no longer fire</td></tr><tr><td>5</td><td>stop near iteration 100–150 when the task is unchanged</td><td>reward flat since ≈ 80</td></tr></table></div><div class="key"><b>The whole course in one line.</b> Make sure the car can see it, pay for exactly what you want, end the episode when it fails, then let PPO take small steps and read the curves in order.</div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('09-build');
+const n=['Goal','Action','Observation','Termination','Reward','Reset','PPO'];
+svg('pipe',720,130, n.map((t,i)=>box(6+i*103,30,86,48,[t],{col:i===6?C.acc:C.fg})+(i<6?L([[92+i*103,54],[107+i*103,54]],{arrow:true}):'')).join('')+L([[667,80],[667,108],[455,108],[455,82]],{arrow:true,col:C.acc})+T(560,124,'train, read, change one thing',{col:C.acc}));
+</script></body></html>

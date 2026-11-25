@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>0 · The loop</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>0 · The loop</h1><p class="sub">Reinforcement learning is one loop, repeated 30 times per second.</p><nav id="nav"></nav>
+<section><h2>Four words</h2>
+<p>The <b>agent</b> (a neural network) reads an <b>observation</b>, picks an <b>action</b>. The <b>environment</b> (Isaac Sim) moves the car and returns a <b>reward</b> and the next observation.</p><figure><div id="loop"></div><figcaption>One control step: 1/30 s (physics at 120 Hz, decimation 4).</figcaption></figure><div class="key"><b>Remember.</b> Nobody tells the car how to steer. It only gets a score. All behaviour comes from that score.</div>
+</section>
+<section><h2>What your car sees and does</h2>
+<div class="scroll"><table class="props"><tr><th>#</th><th>Policy observation (7)</th><th>Meaning</th></tr><tr><td>1</td><td>e_lat</td><td>track centre offset, −1…1, from the camera</td></tr><tr><td>2</td><td>e_heading</td><td>track direction vs car, rad</td></tr><tr><td>3</td><td>confidence</td><td>how sure the detector is, 0…1</td></tr><tr><td>4</td><td>vx</td><td>forward speed, m/s</td></tr><tr><td>5</td><td>vy</td><td>sideways speed</td></tr><tr><td>6</td><td>wz</td><td>yaw rate</td></tr><tr><td>7</td><td>steer</td><td>current steering angle</td></tr></table></div><div class="scroll"><table class="props"><tr><th>Action (2)</th><th>Range</th><th>Mapped to</th></tr><tr><td>steer</td><td>−1…1</td><td>±0.45 rad, filtered and rate-limited to 3 rad/s</td></tr><tr><td>throttle</td><td>−1…1</td><td>0 … 2.5 m/s, rate-limited</td></tr></table></div><div class="key"><b>Remember.</b> An observation must contain what a driver would need. If the information is not in these 7 numbers, no tuning will create it.</div>
+</section>
+<section><h2>Two networks, two views</h2>
+<p>The <b>actor</b> drives. The <b>critic</b> only judges, during training. Your critic gets the exact simulator state (8 numbers), the actor only what the camera pipeline gives.</p><figure><div id="ac"></div><figcaption>Asymmetric actor–critic. The critic is thrown away when you deploy.</figcaption></figure><div class="key"><b>Remember.</b> Cheating is allowed for the critic, never for the actor.</div>
+</section>
+<section><h2>Episode</h2>
+<p>An episode starts at reset and ends when the car <b>fails</b> (a wheel touches a line, or rollover) or <b>time runs out</b> (40 s = 1200 steps). These two endings are treated differently: page 3.</p><figure><div id="ep"></div><figcaption>Two ways to end.</figcaption></figure>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('00-loop');
+svg('loop',720,230, box(30,70,170,80,['Agent','actor network'],{col:C.acc})+box(520,70,170,80,['Environment','Isaac Sim, 64 cars'])+
+ L([[115,70],[115,30],[605,30],[605,66]],{arrow:true,col:C.acc})+T(360,22,'action: steer, throttle',{col:C.acc,b:true})+
+ L([[605,150],[605,195],[115,195],[115,154]],{arrow:true,col:C.blue})+T(360,188,'observation: 7 numbers',{col:C.blue,b:true})+
+ L([[520,110],[206,110]],{arrow:true,col:C.good})+T(360,102,'reward: one number',{col:C.good,b:true}));
+svg('ac',720,230, box(20,20,130,55,['Camera','128×128 RGB'])+L([[150,47],[186,47]],{arrow:true})+box(190,20,130,55,['Detector','+ speeds, steer'])+L([[320,47],[356,47]],{arrow:true})+
+ box(360,20,170,55,['Actor','7→256→128→64→2'],{col:C.acc})+L([[530,47],[566,47]],{arrow:true})+box(570,20,130,55,['Action','steer, throttle'])+
+ box(190,140,130,60,['Simulator truth','8 numbers'])+L([[320,170],[356,170]],{arrow:true})+box(360,140,170,60,['Critic','8→128→64→32→1'],{col:C.blue})+L([[530,170],[566,170]],{arrow:true})+box(570,140,130,60,['Value','one number'])+
+ T(445,96,'43 330 weights',{col:C.mut})+T(445,220,'11 521 weights, training only',{col:C.mut}));
+svg('ep',720,120, L([[30,60],[690,60]],{col:C.line,sw:6})+box(10,38,80,44,['reset'])+box(300,38,150,44,['step, step, …'],{col:C.line})+box(560,6,150,44,['off_track','failure'],{col:C.acc})+box(560,68,150,44,['time_out','not a failure'],{col:C.good}));
+</script></body></html>

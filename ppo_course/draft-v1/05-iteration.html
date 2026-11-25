@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5 · One PPO iteration</title><link rel="stylesheet" href="../assets/course.css"></head><body><main>
+<h1>5 · One PPO iteration</h1><p class="sub">Collect, compute advantages, learn, throw the data away, repeat.</p><nav id="nav"></nav>
+<section><h2>The timeline</h2>
+<figure><div id="tl"></div><figcaption>One iteration with your settings. Collection dominates because of the camera rendering.</figcaption></figure><div class="scroll"><table class="props"><tr><th>Step</th><th>What happens</th></tr><tr><td><span class="step">1</span>Collect</td><td>64 cars drive 64 steps each with the current policy (σ on)</td></tr><tr><td><span class="step">2</span>Advantages</td><td>GAE backwards, then normalised</td></tr><tr><td><span class="step">3</span>Learn</td><td>5 passes over the data, 4 mini-batches each, loss from page 4, gradient norm clipped at 1.0</td></tr><tr><td><span class="step">4</span>Discard</td><td>PPO is on-policy: old data no longer matches the new policy</td></tr></table></div>
+</section>
+<section><h2>Batch calculator</h2>
+<div class='widget'><div class='ctl'><label>num_envs <input type="range" id="ne" min="1" max="256" step="1" value="64"><output id="ne-o"></output></label><label>num_steps_per_env <input type="range" id="ns" min="8" max="128" step="8" value="64"><output id="ns-o"></output></label><label>num_mini_batches <input type="range" id="mb" min="1" max="16" step="1" value="4"><output id="mb-o"></output></label><label>num_learning_epochs <input type="range" id="ep" min="1" max="10" step="1" value="5"><output id="ep-o"></output></label></div><div class='read' id='calc'></div></div><div class="key"><b>Two lengths matter.</b> Samples per iteration set how reliable each update is. Steps per env (64 = 2.1 s) set how much real future GAE sees before the critic takes over.</div>
+</section>
+<section><h2>Every PPO parameter in your file</h2>
+<p><code>agents/rsl_rl_ppo_cfg.py</code></p><div class="scroll"><table class="props"><tr><th>Parameter</th><th>Yours</th><th>Raise it when</th><th>Cost of too high</th></tr><tr><td>num_steps_per_env</td><td>64</td><td>effects of actions appear late</td><td>slower iterations</td></tr><tr><td>num_learning_epochs</td><td>5</td><td>data is expensive, learning slow</td><td>overfits the batch, KL spikes</td></tr><tr><td>num_mini_batches</td><td>4</td><td>batch is large</td><td>noisy gradients</td></tr><tr><td>learning_rate</td><td>5e-4</td><td>(adaptive: only the start value)</td><td>unstable first updates</td></tr><tr><td>desired_kl</td><td>0.01</td><td>learning too timid</td><td>jumpy policy</td></tr><tr><td>clip_param</td><td>0.2</td><td>rarely</td><td>destructive updates</td></tr><tr><td>gamma</td><td>0.99</td><td>consequences are far away</td><td>noisy critic, slow</td></tr><tr><td>lam</td><td>0.95</td><td>critic is poor</td><td>noisy advantages</td></tr><tr><td>entropy_coef</td><td>0.008</td><td>σ collapses before success</td><td>stays noisy forever</td></tr><tr><td>init_std</td><td>0.2</td><td>no discovery early on</td><td>wild actions, instant crashes</td></tr><tr><td>value_loss_coef</td><td>1.0</td><td>rarely</td><td>–</td></tr><tr><td>max_grad_norm</td><td>1.0</td><td>rarely</td><td>–</td></tr><tr><td>save_interval</td><td>50</td><td>–</td><td>only disk use</td></tr></table></div>
+</section>
+
+<div class="pn" id="pn"></div></main>
+<script src="../assets/course.js"></script>
+<script>
+nav('05-iteration');
+bind(['ne','ns','mb','ep'],v=>{ const B=v.ne*v.ns;
+ $('calc').textContent=`samples per iteration : ${v.ne} × ${v.ns} = ${B}\nmini-batch size       : ${Math.floor(B/v.mb)}\ngradient updates      : ${v.ep} × ${v.mb} = ${v.ep*v.mb} per iteration\ndriving per car       : ${(v.ns/30).toFixed(1)} s per iteration\ncollect time at ~1050 samples/s : ${(B/1050).toFixed(1)} s   600 iterations ≈ ${(600*B/1050/60).toFixed(0)} min`+(B/1050>8?'\n(assumes the same throughput; more envs need more GPU memory)':'');
+});
+svg('tl',720,120, R(10,35,520,44,{fill:C.tint,col:C.acc})+T(270,55,'collect 4096 samples',{b:true})+T(270,71,'≈ 3.8 s',{col:C.mut})+R(540,35,60,44)+T(570,61,'GAE')+R(610,35,100,44,{col:C.blue})+T(660,55,'20 updates',{b:true})+T(660,71,'≈ 0.06 s',{col:C.mut})+
+ L([[660,80],[660,105],[270,105],[270,83]],{arrow:true})+T(465,100,'next iteration',{col:C.mut})+T(360,20,'one iteration (your run: 4096 samples, ≈ 1050 samples/s)',{b:true}));
+</script></body></html>
