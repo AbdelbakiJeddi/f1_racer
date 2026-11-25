@@ -38,6 +38,8 @@ class BatchedVisionTrackDetector(nn.Module):
         near_half_span: float = 0.80,
         far_half_span: float = 0.55,
         line_level: float = 0.1,
+        memory_len: int = 10,
+        memory_decay: float = 0.7,
     ):
         """
         Args:
@@ -79,12 +81,18 @@ class BatchedVisionTrackDetector(nn.Module):
         self._prior_near: torch.Tensor | None = None
         self._prior_far: torch.Tensor | None = None
         self._prior_valid: torch.Tensor | None = None  # (N, 1) bool: the priors hold a real estimate
+        # Ring buffer of the last `memory_len` frames per env: (N, memory_len, 3) = [x_near, x_far, confidence],
+        # oldest first. The priors are the confidence-weighted, recency-weighted mean of its entries.
+        self.memory_len = memory_len
+        self.memory_decay = memory_decay
+        self._memory: torch.Tensor | None = None
 
     def reset(self, env_mask: torch.Tensor | None = None) -> None:
-        """Forgets the previous-frame centres, for all envs or for those where `env_mask` (N,) is True."""
-        if env_mask is None or self._prior_near is None:
-            self._prior_near = self._prior_far = self._prior_valid = None
+        """Forgets the stored frames, for all envs or for those where `env_mask` (N,) is True."""
+        if env_mask is None or self._memory is None:
+            self._prior_near = self._prior_far = self._prior_valid = self._memory = None
             return
+        self._memory[env_mask] = 0.0
         self._prior_near[env_mask] = 0.0
         self._prior_far[env_mask] = 0.0
         self._prior_valid[env_mask] = False
@@ -92,13 +100,25 @@ class BatchedVisionTrackDetector(nn.Module):
     def _update_memory(
         self, x_near: torch.Tensor, conf_near: torch.Tensor, x_far: torch.Tensor, conf_far: torch.Tensor
     ) -> None:
-        """Stores this frame's centres as the next frame's priors.
+        """Pushes this frame into the ring buffer and recomputes the priors for the next frame.
 
-        Sets self._prior_near, self._prior_far (N, 1) and self._prior_valid (N, 1) bool. Where the memory is
-        valid, it decides lone lines and the missing-line test is skipped, so a wrong value stored here repeats.
+        Each prior is sum(w * x) / sum(w) with w = confidence * decay**age, so frames that saw no line
+        (confidence 0) leave the last good centre in place instead of resetting it to 0. The priors are
+        valid once any stored frame has confidence. A wrong lone-line decision is stored too, so it repeats
+        until a pair (confidence 1) outweighs it.
         """
-        # TODO(human)
-        pass
+        frame = torch.stack([x_near, x_far, (conf_near + conf_far) * 0.5], dim=-1).squeeze(1)  # (N, 3)
+        self._memory = torch.roll(self._memory, shifts=-1, dims=1)
+        self._memory[:, -1] = frame
+        age = torch.arange(self.memory_len - 1, -1, -1, device=frame.device, dtype=frame.dtype)
+        recency = self.memory_decay**age  # newest = 1
+        weight = self._memory[:, :, 2] * recency  # (N, n)
+        total = weight.sum(dim=1, keepdim=True)
+        valid = total > 1e-6
+        safe = total.clamp_min(1e-6)
+        self._prior_near = (self._memory[:, :, 0] * weight).sum(dim=1, keepdim=True) / safe
+        self._prior_far = (self._memory[:, :, 1] * weight).sum(dim=1, keepdim=True) / safe
+        self._prior_valid = valid
 
     def extract_line_mask(self, rgb: torch.Tensor) -> torch.Tensor:
         """Isolates racing yellow lines against dark tarmac with zero noise floor.
@@ -284,6 +304,7 @@ class BatchedVisionTrackDetector(nn.Module):
             self._prior_near = torch.zeros(N, 1, device=mask.device, dtype=mask.dtype)
             self._prior_far = torch.zeros(N, 1, device=mask.device, dtype=mask.dtype)
             self._prior_valid = torch.zeros(N, 1, device=mask.device, dtype=torch.bool)
+            self._memory = torch.zeros(N, self.memory_len, 3, device=mask.device, dtype=mask.dtype)
 
         # A lone line in both bands is the same boundary, so an undecided band borrows the other's answer.
         side_near = self._lone_line_side(near_slice, self.near_half_span)
@@ -302,11 +323,11 @@ class BatchedVisionTrackDetector(nn.Module):
         prior_far = torch.where(pair_near, (x_l_n + x_r_n) * 0.5 / scale, self._prior_far)
 
         x_near, conf_near = self._find_scanline_center(
-            near_slice, self.near_half_span, line_side=side_near, prior=prior_near,
+            near_slice, self.near_half_span, prev_estimate=prior_near, line_side=side_near, prior=prior_near,
             trust_prior=pair_far | self._prior_valid,
         )
         x_far, conf_far = self._find_scanline_center(
-            far_slice, self.far_half_span, prev_estimate=x_near, line_side=side_far, prior=prior_far,
+            far_slice, self.far_half_span, prev_estimate=prior_far, line_side=side_far, prior=prior_far,
             trust_prior=pair_near | self._prior_valid,
         )
         self._update_memory(x_near, conf_near, x_far, conf_far)

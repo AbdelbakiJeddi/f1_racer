@@ -100,7 +100,6 @@ def main():
     env_cfg = F1RacerEnvCfg()
     env_cfg.scene.num_envs = 1
     env_cfg.episode_length_s = 120.0
-    env_cfg.terminations.off_track.params["max_lateral_distance"] = 2.5
 
     cam_start_x = start_pos_2d[0] - 4.0 * math.cos(start_yaw)
     cam_start_y = start_pos_2d[1] - 4.0 * math.sin(start_yaw)

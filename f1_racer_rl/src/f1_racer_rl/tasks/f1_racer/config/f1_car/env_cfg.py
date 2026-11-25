@@ -126,7 +126,7 @@ class ActionsCfg:
     drive = mdp.LeatherbackDriveActionCfg(
         asset_name="robot",
         max_steer_angle=0.45,
-        max_speed=2.5,
+        max_speed=3.0,
         min_speed=0.0,
     )
 
@@ -201,19 +201,17 @@ class RewardsCfg:
     """Reward terms for path centering, forward racing, and lap completion."""
 
     # (1) Primary task: Gaussian reward for remaining centered between boundary lines
-    centering = RewTerm(func=mdp.CarRewards.centering, weight=3.5, params={"std": 0.25})
+    centering = RewTerm(func=mdp.CarRewards.centering, weight=1.0, params={"std": 0.25})
 
-    # (2) Progress: forward velocity along track tangent
-    progress = RewTerm(func=mdp.CarRewards.forward_progress, weight=1.0)
+
+    # (2) Speed: velocity projected along the track tangent (m/s)
+    progress = RewTerm(func=mdp.CarRewards.forward_progress, weight=2.0)
 
     # (3) Heading: alignment of car with track tangent direction
     heading = RewTerm(func=mdp.CarRewards.heading_alignment, weight=0.5)
 
     # (4) Penalty for slow runs (speed along tangent below 1.5 m/s)
     slow_speed = RewTerm(func=mdp.slow_speed_penalty, weight=-1.0, params={"min_speed": 1.5})
-
-    # (5) Massive completion bonus for finishing the full lap
-    lap_completion = RewTerm(func=mdp.lap_completion_bonus, weight=50.0)
 
     # (6) Penalty for straying close to or outside the boundary ribbons
     boundary = RewTerm(
@@ -232,11 +230,8 @@ class RewardsCfg:
     # (8) Action rate: penalize rapid back-and-forth steering action jitter
     steering_rate = RewTerm(
         func=mdp.CarRewards.steering_rate,
-        weight=-0.25,
+        weight=-0.1,
     )
-
-    # (9) Small step penalty / time cost to incentivize fast completion
-    step_penalty = RewTerm(func=mdp.is_alive, weight=-0.05)
 
 
 @configclass
